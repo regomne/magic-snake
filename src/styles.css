@@ -55,6 +55,7 @@ textarea.formula-error { border-color: #d14832; background: #fff8f5; box-shadow:
 .error-box p { margin: 3px 0; }
 .collision-box { border-left: 3px solid #d47a28; background: #fff6e9; color: #814619; padding: 9px 11px; margin: 0 0 13px; font-size: 11px; border-radius: 2px 7px 7px 2px; }
 .collision-box p { margin: 4px 0 0; line-height: 1.5; }
+.collision-box.intermediate { border-left-color: #6f89ad; background: #eef3fa; color: #49617f; line-height: 1.55; }
 .step-list-heading { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; padding: 13px 1px 10px; border-top: 1px solid #e1e6e3; }
 .step-list-heading b { color: #87918c; font-weight: 500; }
 .step-list { min-height: 0; overflow: auto; margin: 0 -7px; padding: 0 7px 15px; scrollbar-width: thin; }

@@ -23,9 +23,10 @@ const LENGTHS = [24, 36, 48, 72] as const
 const STORAGE_KEY = 'magic-snake:workspace:v2'
 
 function loadInitialState() {
+  const hash = new URLSearchParams(window.location.hash.slice(1))
   const query = new URLSearchParams(window.location.search)
-  const queryLength = Number(query.get('length'))
-  const queryFormula = query.get('formula')
+  const queryLength = Number(hash.get('length') ?? query.get('length'))
+  const queryFormula = hash.get('formula') ?? query.get('formula')
   if (LENGTHS.includes(queryLength as typeof LENGTHS[number]) && queryFormula !== null) {
     return { pieceCount: queryLength, formula: queryFormula }
   }
@@ -34,6 +35,11 @@ function loadInitialState() {
     if (LENGTHS.includes(saved.pieceCount) && typeof saved.formula === 'string') return saved
   } catch { /* Use the bundled example when saved data is damaged. */ }
   return { pieceCount: 24, formula: DEFAULT_FORMULA }
+}
+
+function writeShapeToHash(pieceCount: number, formula: string) {
+  const hash = new URLSearchParams({ length: String(pieceCount), formula })
+  history.replaceState(null, '', `${window.location.pathname}#${hash}`)
 }
 
 function App() {
@@ -75,6 +81,8 @@ function App() {
     [steps, pieceCount, parsed.errors.length],
   )
   const currentIssues = collisionIssues.filter((issue) => issue.step === currentStep)
+  const finalCollisionIssues = collisionIssues.filter((issue) => issue.step === steps.length)
+  const hasIntermediateCollisions = collisionIssues.some((issue) => issue.step < steps.length)
   const collisionPieces = [...new Set(currentIssues.flatMap((issue) => issue.pieces))]
   const selectedJoint = selectedPiece !== undefined && selectedPiece > 1 ? selectedPiece - 1 : undefined
 
@@ -227,13 +235,13 @@ function App() {
     setCurrentStep(nextParsed.steps.length)
     setSelectedPiece(undefined)
     setPlaying(false)
+    writeShapeToHash(preset.pieceCount, preset.formula)
   }
 
   async function share() {
     const url = new URL(window.location.href)
     url.search = ''
-    url.searchParams.set('length', String(pieceCount))
-    url.searchParams.set('formula', formula)
+    url.hash = new URLSearchParams({ length: String(pieceCount), formula }).toString()
     history.replaceState(null, '', url)
     try { await navigator.clipboard.writeText(url.toString()); setNotice(en ? 'Share link copied' : '分享链接已复制') }
     catch { setNotice(en ? 'Link written to the address bar' : '链接已写入地址栏') }
@@ -314,7 +322,8 @@ function App() {
             </>}
           </div>
           {parsed.errors.length > 0 && <div className="error-box">{parsed.errors.map((error) => <p key={error}>{error}</p>)}</div>}
-          {collisionIssues.length > 0 && <div className="collision-box"><b>{en ? `Final-pose check: ${collisionIssues.length} issue(s)` : `最终姿态检查：发现 ${collisionIssues.length} 项`}</b><p>{collisionIssues.slice(0, 3).map((issue) => en ? `Step ${issue.step}: pieces ${issue.pieces.join(' / ')} overlap` : `步骤 ${issue.step}：方块 ${issue.pieces.join(' / ')} 占据重叠空间`).join(en ? '; ' : '；')}</p></div>}
+          {finalCollisionIssues.length > 0 && <div className="collision-box"><b>{en ? `Final-pose check: ${finalCollisionIssues.length} overlap(s)` : `最终姿态检查：发现 ${finalCollisionIssues.length} 项重叠`}</b><p>{finalCollisionIssues.slice(0, 3).map((issue) => en ? `Pieces ${issue.pieces.join(' / ')} overlap` : `方块 ${issue.pieces.join(' / ')} 占据重叠空间`).join(en ? '; ' : '；')}</p></div>}
+          {!finalCollisionIssues.length && hasIntermediateCollisions && <div className="collision-box intermediate"><b>{en ? 'Some intermediate steps contain overlapping pieces. Reorder the steps as needed; the final shape has no overlaps.' : '中间步骤中存在重叠方块，请自行调整前后顺序，最终造型不存在重叠。'}</b></div>}
 
           <h3 className="manual-heading">{en ? 'Manual edit' : '手动编辑'}</h3>
           <section className="joint-editor" aria-label={en ? 'Manual edit' : '手动编辑'}>
