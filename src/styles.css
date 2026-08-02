@@ -20,6 +20,7 @@ button:disabled { cursor: not-allowed; opacity: .4; }
 .top-actions { display: flex; align-items: center; gap: 8px; }
 .ghost-button, .icon-button { border: 1px solid #d6ddda; background: #fff; border-radius: 8px; height: 38px; display: inline-flex; align-items: center; gap: 7px; padding: 0 13px; font-size: 12px; }
 .icon-button { width: 38px; padding: 0; justify-content: center; }
+.language-select { width: 92px; height: 38px; font-size: 12px; }
 .workspace { display: grid; grid-template-columns: 320px minmax(0, 1fr) 280px; min-height: 0; }
 .editor-panel { background: #fbfcfa; border-right: 1px solid #d6ddda; padding: 22px 22px 16px; display: flex; flex-direction: column; min-height: 0; overflow: auto; }
 .eyebrow { font: 500 10px/1 'DM Mono', monospace; color: #e05c2f; letter-spacing: .18em; }

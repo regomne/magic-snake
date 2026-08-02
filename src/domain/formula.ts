@@ -21,14 +21,14 @@ function normalizePower(value: string) {
   return value.replaceAll('⁻', '-').replaceAll('¹', '1').replaceAll('²', '2').replaceAll('³', '3')
 }
 
-export function parseFormula(input: string, pieceCount: number): ParseResult {
+export function parseFormula(input: string, pieceCount: number, language: 'zh' | 'en' = 'zh'): ParseResult {
   const trimmed = input.trim()
   if (!trimmed) return { steps: [], errors: [], notation: undefined }
   if (/^[0-3]+$/.test(trimmed)) {
     if (trimmed.length !== pieceCount) {
       return {
         steps: [],
-        errors: [`0123 姿态编码应为 ${pieceCount} 位，当前为 ${trimmed.length} 位`],
+        errors: [language === 'en' ? `0123 pose encoding must contain ${pieceCount} digits; found ${trimmed.length}` : `0123 姿态编码应为 ${pieceCount} 位，当前为 ${trimmed.length} 位`],
         notation: 'digits',
       }
     }
@@ -49,7 +49,7 @@ export function parseFormula(input: string, pieceCount: number): ParseResult {
     const speedMatch = primaryNotation ? null : source.match(SPEED_ITEM)
     const powerMatch = primaryNotation ? null : source.match(POWER_ITEM)
     if (!match && !speedMatch && !powerMatch) {
-      errors.push(`第 ${index + 1} 项“${source}”格式不正确，应写成 3(-1) 或 4-`)
+      errors.push(language === 'en' ? `Item ${index + 1} “${source}” is invalid; use 3(-1) or 4-` : `第 ${index + 1} 项“${source}”格式不正确，应写成 3(-1) 或 4-`)
       return
     }
 
@@ -67,12 +67,12 @@ export function parseFormula(input: string, pieceCount: number): ParseResult {
     // tolerance, while keeping the canonical output compact.
     const turn = match && rawTurn === -2 ? 2 : rawTurn
     if (piece < 1 || piece > pieceCount) {
-      errors.push(`方块 ${piece} 超出范围（当前可用 1–${pieceCount}）`)
+      errors.push(language === 'en' ? `Piece ${piece} is out of range (1–${pieceCount})` : `方块 ${piece} 超出范围（当前可用 1–${pieceCount}）`)
       return
     }
     if (match && rawTurn === 0) return
     if (turn !== -1 && turn !== 1 && turn !== 2) {
-      errors.push(`方块 ${piece} 的旋转只能是 1、-1 或 2`)
+      errors.push(language === 'en' ? `Piece ${piece} must use a turn of 1, -1, or 2` : `方块 ${piece} 的旋转只能是 1、-1 或 2`)
       return
     }
     // Piece 1 has no preceding joint, so its turn is a harmless no-op.
