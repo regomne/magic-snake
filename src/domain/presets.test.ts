@@ -6,7 +6,9 @@ import { SHAPE_PRESETS } from './presets'
 describe('shape presets', () => {
   it('contains formulas that parse for their declared snake length', () => {
     SHAPE_PRESETS.forEach((preset) => {
-      expect(parseFormula(preset.formula, preset.pieceCount).errors, preset.name).toEqual([])
+      const result = parseFormula(preset.formula, preset.pieceCount)
+      expect(result.errors, preset.name).toEqual([])
+      expect(result.notation, preset.name).toBe('digits')
     })
   })
 

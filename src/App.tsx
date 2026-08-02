@@ -289,9 +289,9 @@ function App() {
           <div className="formula-heading">
             <label className="formula-label" htmlFor="formula">{en ? 'Formula' : '公式'}</label>
             <select aria-label="公式格式" value={formulaNotation} onChange={(event) => changeFormulaNotation(event.target.value as FormulaNotation)}>
-              <option value="speed">{en ? 'Speed notation' : '标准速拧格式'}</option>
-              <option value="joint">{en ? 'Parenthesized pieces' : '括号格式（方块）'}</option>
               <option value="digits">{en ? '0123 pose encoding' : '0123 姿态编码'}</option>
+              <option value="speed">{en ? 'Speed notation' : '标准速拧格式'}</option>
+              <option value="joint">{en ? 'Parenthesized notation' : '括号格式'}</option>
             </select>
           </div>
           <textarea
