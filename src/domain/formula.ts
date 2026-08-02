@@ -1,5 +1,5 @@
 export type Turn = -1 | 1 | 2
-export type FormulaNotation = 'joint' | 'speed'
+export type FormulaNotation = 'joint' | 'speed' | 'digits'
 
 export interface FormulaStep {
   joint: number
@@ -22,7 +22,23 @@ function normalizePower(value: string) {
 }
 
 export function parseFormula(input: string, pieceCount: number): ParseResult {
-  if (!input.trim()) return { steps: [], errors: [], notation: undefined }
+  const trimmed = input.trim()
+  if (!trimmed) return { steps: [], errors: [], notation: undefined }
+  if (/^[0-3]+$/.test(trimmed)) {
+    if (trimmed.length !== pieceCount) {
+      return {
+        steps: [],
+        errors: [`0123 姿态编码应为 ${pieceCount} 位，当前为 ${trimmed.length} 位`],
+        notation: 'digits',
+      }
+    }
+    const steps = [...trimmed].flatMap((digit, index): FormulaStep[] => {
+      if (index === 0 || digit === '0') return []
+      const turn: Turn = digit === '1' ? 1 : digit === '2' ? 2 : -1
+      return [{ joint: index, turn, source: `${index + 1}:${digit}` }]
+    })
+    return { steps, errors: [], notation: 'digits' }
+  }
   const primaryNotation = input.includes('(')
   const chunks = input.split(primaryNotation ? /[,，;；\n]+/ : /[,，;；\s]+/).map((item) => item.trim()).filter(Boolean)
   const steps: FormulaStep[] = []
@@ -67,7 +83,16 @@ export function parseFormula(input: string, pieceCount: number): ParseResult {
   return { steps, errors, notation: primaryNotation ? 'joint' : 'speed' }
 }
 
-export function formatFormula(steps: FormulaStep[], notation: FormulaNotation = 'joint') {
+export function formatFormula(steps: FormulaStep[], notation: FormulaNotation = 'joint', pieceCount?: number) {
+  if (notation === 'digits') {
+    const length = pieceCount ?? Math.max(1, ...steps.map(({ joint }) => joint + 1))
+    const digits = Array.from({ length }, () => 0)
+    steps.forEach(({ joint, turn }) => {
+      const quarterTurns = turn === -1 ? 3 : turn
+      digits[joint] = (digits[joint] + quarterTurns) % 4
+    })
+    return digits.join('')
+  }
   if (notation === 'speed') {
     return steps.map(({ joint, turn }) => `${joint + 1}${turn === 1 ? '+' : turn === -1 ? '-' : 'x'}`).join(' ')
   }

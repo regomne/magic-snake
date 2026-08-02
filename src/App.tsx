@@ -17,18 +17,9 @@ import { SnakeScene } from './components/SnakeScene'
 import { analyzeCollisions, appendTurn } from './domain/collision'
 import { formatFormula, parseFormula } from './domain/formula'
 import type { FormulaNotation, Turn } from './domain/formula'
+import { DEFAULT_FORMULA, SHAPE_PRESETS } from './domain/presets'
 
 const LENGTHS = [24, 36, 48, 72] as const
-const EXAMPLE = '2(1), 4(-1), 6(2), 8(1), 10(-1), 12(1), 14(2), 16(-1), 18(1), 20(2), 22(-1), 24(1)'
-const PRESETS = [
-  {
-    id: 'ball-24',
-    name: '24 段球形',
-    pieceCount: 24,
-    formula: '2- 3- 4+ 6+ 7+ 5- 8- 9+ 11- 10- 12+ 14+ 15+ 13- 16- 17+ 19- 20+ 21- 18- 23+ 24- 22+',
-  },
-  { id: 'demo-24', name: '24 段演示造型', pieceCount: 24, formula: EXAMPLE },
-] as const
 const STORAGE_KEY = 'magic-snake:workspace:v2'
 
 function loadInitialState() {
@@ -42,7 +33,7 @@ function loadInitialState() {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '')
     if (LENGTHS.includes(saved.pieceCount) && typeof saved.formula === 'string') return saved
   } catch { /* Use the bundled example when saved data is damaged. */ }
-  return { pieceCount: 24, formula: EXAMPLE }
+  return { pieceCount: 24, formula: DEFAULT_FORMULA }
 }
 
 function App() {
@@ -188,7 +179,7 @@ function App() {
         return
       }
     }
-    commitFormula(formatFormula(nextSteps, formulaNotation))
+    commitFormula(formatFormula(nextSteps, formulaNotation, pieceCount))
   }
 
   function togglePlaying() {
@@ -217,11 +208,11 @@ function App() {
 
   function changeFormulaNotation(notation: FormulaNotation) {
     setFormulaNotation(notation)
-    if (!parsed.errors.length) setFormula(formatFormula(parsed.steps, notation))
+    if (!parsed.errors.length) setFormula(formatFormula(parsed.steps, notation, pieceCount))
   }
 
   function applyPreset(id: string) {
-    const preset = PRESETS.find((item) => item.id === id)
+    const preset = SHAPE_PRESETS.find((item) => item.id === id)
     if (!preset) return
     const nextParsed = parseFormula(preset.formula, preset.pieceCount)
     setUndoStack((stack) => [...stack.slice(-99), formula])
@@ -276,10 +267,10 @@ function App() {
       <section className="workspace">
         <aside className="editor-panel">
           <div className="preset-row">
-            <label htmlFor="preset">预置公式</label>
+            <label htmlFor="preset">预置形状</label>
             <select id="preset" defaultValue="" onChange={(event) => { applyPreset(event.target.value); event.target.value = '' }}>
               <option value="" disabled>选择预置造型…</option>
-              {PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
+              {SHAPE_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
             </select>
           </div>
 
@@ -295,6 +286,7 @@ function App() {
             <select aria-label="公式格式" value={formulaNotation} onChange={(event) => changeFormulaNotation(event.target.value as FormulaNotation)}>
               <option value="speed">标准速拧格式</option>
               <option value="joint">括号格式（方块）</option>
+              <option value="digits">0123 姿态编码</option>
             </select>
           </div>
           <textarea
@@ -305,13 +297,15 @@ function App() {
             onFocus={() => { textStart.current = formula }}
             onBlur={() => { if (textStart.current !== formula) { setUndoStack((stack) => [...stack, textStart.current]); setRedoStack([]) } }}
             onChange={(event) => { const next = event.target.value; const result = parseFormula(next, pieceCount); setFormula(next); if (result.notation && !result.errors.length) setFormulaNotation(result.notation); setCurrentStep(result.steps.length); setPlaying(false) }}
-            placeholder={formulaNotation === 'joint' ? '例如：2(1), 4(-1), 6(2)' : '例如：2+ 4- 6x'}
+            placeholder={formulaNotation === 'joint' ? '例如：2(1), 4(-1), 6(2)' : formulaNotation === 'speed' ? '例如：2+ 4- 6x' : `${pieceCount} 位 0123 姿态编码`}
           />
           <div className="legend">
             {formulaNotation === 'speed' ? <>
               <span><i className="cw" />+ 顺时针</span><span><i className="ccw" />− 逆时针</span><span><i className="half" />x 旋转 180°</span>
-            </> : <>
+            </> : formulaNotation === 'joint' ? <>
               <span><i className="cw" />1 顺时针</span><span><i className="ccw" />−1 逆时针</span><span><i className="half" />2 旋转 180°</span>
+            </> : <>
+              <span><i />0 不动</span><span><i className="cw" />1 顺时针</span><span><i className="half" />2 旋转 180°</span><span><i className="ccw" />3 逆时针</span>
             </>}
           </div>
           {parsed.errors.length > 0 && <div className="error-box">{parsed.errors.map((error) => <p key={error}>{error}</p>)}</div>}
