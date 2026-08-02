@@ -447,9 +447,25 @@ function CameraRig({
         startFitDirection.current = new Vector3(0, 0, 1)
           .applyQuaternion(camera.quaternion)
           .normalize()
+        // Re-centre deterministically before animating the distance. Trying to
+        // interpolate from CameraControls' orbit target allowed a prior pan's
+        // internal offset to keep the piece in the same screen corner.
+        const centeredPosition = sphere.center.clone()
+          .addScaledVector(startFitDirection.current, controlsInstance.distance)
+        controlsInstance.setLookAt(
+          centeredPosition.x,
+          centeredPosition.y,
+          centeredPosition.z,
+          sphere.center.x,
+          sphere.center.y,
+          sphere.center.z,
+          false,
+        )
+        appliedFocus.current.copy(sphere.center)
       }
     }
     if (startFitCenter.current && autoFitDistance.current !== undefined) {
+      controlsInstance.setFocalOffset(0, 0, 0, false)
       const currentTarget = controlsInstance.getTarget(new Vector3())
       const centerDifference = startFitCenter.current.clone().sub(currentTarget)
       const distanceDifference = autoFitDistance.current - controlsInstance.distance
