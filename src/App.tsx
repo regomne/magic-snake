@@ -21,7 +21,7 @@ import {
 import { SnakeScene } from './components/SnakeScene'
 import { analyzeCollisions, appendTurn } from './domain/collision'
 import { formatFormula, parseFormula } from './domain/formula'
-import type { Turn } from './domain/formula'
+import type { FormulaNotation, Turn } from './domain/formula'
 
 const LENGTHS = [24, 36, 48, 72] as const
 const EXAMPLE = '1(1), 3(-1), 5(2), 7(1), 9(-1), 11(1), 13(2), 15(-1), 17(1), 19(2), 21(-1), 23(1)'
@@ -69,6 +69,9 @@ function App() {
   const [initial] = useState(loadInitialState)
   const [pieceCount, setPieceCount] = useState<number>(initial.pieceCount)
   const [formula, setFormula] = useState(initial.formula)
+  const [formulaNotation, setFormulaNotation] = useState<FormulaNotation>(
+    () => parseFormula(initial.formula, initial.pieceCount).notation ?? 'joint',
+  )
   const [currentStep, setCurrentStep] = useState(() => parseFormula(initial.formula, initial.pieceCount).steps.length)
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)
@@ -167,7 +170,9 @@ function App() {
 
   function setFinishedFormula(next: string) {
     setFormula(next)
-    setCurrentStep(parseFormula(next, pieceCount).steps.length)
+    const nextParsed = parseFormula(next, pieceCount)
+    if (nextParsed.notation) setFormulaNotation(nextParsed.notation)
+    setCurrentStep(nextParsed.steps.length)
     setPlaying(false)
   }
 
@@ -205,7 +210,7 @@ function App() {
         return
       }
     }
-    commitFormula(formatFormula(nextSteps))
+    commitFormula(formatFormula(nextSteps, formulaNotation))
   }
 
   function togglePlaying() {
@@ -230,6 +235,11 @@ function App() {
   function changeAutoViewport(enabled: boolean) {
     setAutoViewport(enabled)
     if (enabled && playing) setViewportFitSignal((value) => value + 1)
+  }
+
+  function changeFormulaNotation(notation: FormulaNotation) {
+    setFormulaNotation(notation)
+    if (!parsed.errors.length) setFormula(formatFormula(parsed.steps, notation))
   }
 
   async function share() {
@@ -278,6 +288,17 @@ function App() {
     download('magic-snake-guide.txt', lines.join('\n'), 'text/plain;charset=utf-8')
   }
 
+  function openSavedShape(shape: SavedShape) {
+    const nextParsed = parseFormula(shape.formula, shape.pieceCount)
+    setUndoStack((stack) => [...stack, formula])
+    setRedoStack([])
+    setPieceCount(shape.pieceCount)
+    setFormula(shape.formula)
+    if (nextParsed.notation) setFormulaNotation(nextParsed.notation)
+    setCurrentStep(nextParsed.steps.length)
+    setPlaying(false)
+  }
+
   async function importFile(file?: File) {
     if (!file) return
     try {
@@ -293,7 +314,9 @@ function App() {
       setUndoStack((stack) => [...stack, formula])
       setRedoStack([])
       setFormula(nextFormula)
-      setCurrentStep(parseFormula(nextFormula, nextLength).steps.length)
+      const nextParsed = parseFormula(nextFormula, nextLength)
+      if (nextParsed.notation) setFormulaNotation(nextParsed.notation)
+      setCurrentStep(nextParsed.steps.length)
       setNotice('文件已导入')
     } catch { setNotice('无法识别这个文件') }
     if (importRef.current) importRef.current.value = ''
@@ -352,17 +375,30 @@ function App() {
             </div>
           </section>
 
-          <label className="formula-label" htmlFor="formula">公式（模型操作会自动同步）</label>
+          <div className="formula-heading">
+            <label className="formula-label" htmlFor="formula">公式（模型操作会自动同步）</label>
+            <select aria-label="公式格式" value={formulaNotation} onChange={(event) => changeFormulaNotation(event.target.value as FormulaNotation)}>
+              <option value="speed">标准速拧格式</option>
+              <option value="joint">括号格式（方块）</option>
+            </select>
+          </div>
           <textarea
             id="formula"
+            className={parsed.errors.length ? 'formula-error' : undefined}
             value={formula}
             spellCheck={false}
             onFocus={() => { textStart.current = formula }}
             onBlur={() => { if (textStart.current !== formula) { setUndoStack((stack) => [...stack, textStart.current]); setRedoStack([]) } }}
-            onChange={(event) => { const next = event.target.value; setFormula(next); setCurrentStep(parseFormula(next, pieceCount).steps.length); setPlaying(false) }}
-            placeholder="例如：1(1), 3(-1), 5(2)"
+            onChange={(event) => { const next = event.target.value; const result = parseFormula(next, pieceCount); setFormula(next); if (result.notation && !result.errors.length) setFormulaNotation(result.notation); setCurrentStep(result.steps.length); setPlaying(false) }}
+            placeholder={formulaNotation === 'joint' ? '例如：2(1), 4(-1), 6(2)' : '例如：2+ 4- 6x'}
           />
-          <div className="legend"><span><i className="cw" />1 顺时针</span><span><i className="ccw" />−1 逆时针</span><span><i className="half" />2 旋转 180°</span></div>
+          <div className="legend">
+            {formulaNotation === 'speed' ? <>
+              <span><i className="cw" />+ 顺时针</span><span><i className="ccw" />− 逆时针</span><span><i className="half" />x 旋转 180°</span>
+            </> : <>
+              <span><i className="cw" />1 顺时针</span><span><i className="ccw" />−1 逆时针</span><span><i className="half" />2 旋转 180°</span>
+            </>}
+          </div>
           {parsed.errors.length > 0 && <div className="error-box">{parsed.errors.map((error) => <p key={error}>{error}</p>)}</div>}
           {collisionIssues.length > 0 && <div className="collision-box"><b>最终姿态检查：发现 {collisionIssues.length} 项</b><p>{collisionIssues.slice(0, 3).map((issue) => `步骤 ${issue.step}：方块 ${issue.pieces.join(' / ')} 占据重叠空间`).join('；')}</p></div>}
 
@@ -373,7 +409,7 @@ function App() {
             <button onClick={exportGuide}><FileText size={15} />教学</button>
             <input ref={importRef} hidden type="file" accept=".json,.txt,text/plain,application/json" onChange={(event) => importFile(event.target.files?.[0])} />
           </div>
-          {savedShapes.length > 0 && <select className="saved-shapes" defaultValue="" onChange={(event) => { const shape = savedShapes.find((item) => item.id === event.target.value); if (shape) { setUndoStack((stack) => [...stack, formula]); setRedoStack([]); setPieceCount(shape.pieceCount); setFormula(shape.formula); setCurrentStep(parseFormula(shape.formula, shape.pieceCount).steps.length); setPlaying(false) }; event.target.value = '' }}><option value="" disabled>打开已保存造型…</option>{savedShapes.map((shape) => <option key={shape.id} value={shape.id}>{shape.name} · {shape.pieceCount} 段</option>)}</select>}
+          {savedShapes.length > 0 && <select className="saved-shapes" defaultValue="" onChange={(event) => { const shape = savedShapes.find((item) => item.id === event.target.value); if (shape) openSavedShape(shape); event.target.value = '' }}><option value="" disabled>打开已保存造型…</option>{savedShapes.map((shape) => <option key={shape.id} value={shape.id}>{shape.name} · {shape.pieceCount} 段</option>)}</select>}
 
         </aside>
 
@@ -434,7 +470,7 @@ function App() {
       </footer>
 
       {notice && <div className="toast" role="status">{notice}</div>}
-      {showHelp && <div className="modal-backdrop" onMouseDown={() => setShowHelp(false)}><article className="help-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setShowHelp(false)}>×</button><span className="eyebrow">WORKBENCH</span><h2>直接设计魔尺</h2><p>点击任意方块选择它的上一个关节，再使用旋转按钮。模型、公式和右侧教学步骤会自动同步。</p><div className="help-code">1：顺时针 −：逆时针 2：180°</div><ul><li><b>Ctrl/⌘ Z</b> 撤销，<b>Ctrl/⌘ Shift Z</b> 重做</li><li>整数晶格检查每一步完成后的最终空间占位</li><li>公式中关节 1 位于第 1、2 块之间</li></ul><p>工作内容会自动保存在浏览器中，也可以导出 JSON 或通过 URL 分享。</p></article></div>}
+      {showHelp && <div className="modal-backdrop" onMouseDown={() => setShowHelp(false)}><article className="help-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setShowHelp(false)}>×</button><span className="eyebrow">WORKBENCH</span><h2>直接设计魔尺</h2><p>点击任意方块选择它的上一个关节，再使用旋转按钮。模型、公式和右侧教学步骤会自动同步。</p><div className="help-code">1：顺时针 −：逆时针 2：180°</div><ul><li><b>Ctrl/⌘ Z</b> 撤销，<b>Ctrl/⌘ Shift Z</b> 重做</li><li>整数晶格检查每一步完成后的最终空间占位</li><li>公式编号代表方块；方块 1 没有前置关节，会被忽略</li></ul><p>工作内容会自动保存在浏览器中，也可以导出 JSON 或通过 URL 分享。</p></article></div>}
     </main>
   )
 }

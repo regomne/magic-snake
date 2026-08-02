@@ -27,6 +27,9 @@ button:disabled { cursor: not-allowed; opacity: .4; }
 .panel-heading h2, .help-modal h2 { font-size: 20px; margin: 5px 0 0; }
 select { border: 1px solid #ccd5d0; border-radius: 7px; background: #fff; padding: 7px 28px 7px 10px; color: #24342c; }
 .formula-label { font-size: 12px; color: #66736d; margin-bottom: 7px; }
+.formula-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
+.formula-heading .formula-label { margin: 0; }
+.formula-heading select { max-width: 126px; padding: 5px 24px 5px 8px; font-size: 10px; }
 .joint-editor { background: #edf2f8; border: 1px solid #d5dfeb; border-radius: 10px; padding: 12px; margin: -3px 0 15px; }
 .joint-editor-title { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: #64736c; }
 .joint-editor-title b { font: 600 17px 'DM Mono', monospace; color: #245ba6; }
@@ -40,6 +43,7 @@ select { border: 1px solid #ccd5d0; border-radius: 7px; background: #fff; paddin
 .edit-options button { border: 0; background: transparent; color: #b44c2a; padding: 3px; }
 textarea { width: 100%; min-height: 112px; resize: vertical; border: 1px solid #cbd4cf; border-radius: 8px; padding: 12px; font: 500 13px/1.8 'DM Mono', monospace; color: #173329; background: #f5f7f4; outline: none; }
 textarea:focus { border-color: #285ca8; box-shadow: 0 0 0 3px rgba(40, 92, 168, .1); }
+textarea.formula-error { border-color: #d14832; background: #fff8f5; box-shadow: 0 0 0 3px rgba(209, 72, 50, .08); }
 .legend { display: flex; flex-wrap: wrap; gap: 8px 13px; margin: 11px 0 17px; font-size: 10px; color: #66736d; }
 .legend span { display: flex; gap: 5px; align-items: center; }
 .legend i { width: 7px; height: 7px; display: inline-block; border-radius: 50%; background: #2a62ad; }

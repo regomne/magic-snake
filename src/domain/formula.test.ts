@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { parseFormula } from './formula'
+import { formatFormula, parseFormula } from './formula'
 import { calculateTransforms, turnsAtStep } from './snake'
 
 describe('parseFormula', () => {
-  it('parses the primary sparse joint notation', () => {
+  it('parses parenthesized piece notation and ignores piece one', () => {
     expect(parseFormula('1(1), 3(-1)，5(2)', 24).steps.map(({ joint, turn }) => [joint, turn]))
-      .toEqual([[1, 1], [3, -1], [5, 2]])
+      .toEqual([[2, -1], [4, 2]])
   })
 
   it('reports invalid joints and turns', () => {
-    expect(parseFormula('24(1), 2(3)', 24).errors).toHaveLength(2)
+    expect(parseFormula('25(1), 2(3)', 24).errors).toHaveLength(2)
   })
 
   it('adapts common segment superscript notation to joint notation', () => {
@@ -17,8 +17,28 @@ describe('parseFormula', () => {
       .toEqual([[1, 1], [3, 2], [9, -1], [23, 1]])
   })
 
+  it('parses standard speed-solving prism notation', () => {
+    const result = parseFormula('2- 3- 4+ 6+ 24- 22x', 24)
+    expect(result.notation).toBe('speed')
+    expect(result.steps.map(({ joint, turn }) => [joint, turn]))
+      .toEqual([[1, -1], [2, -1], [3, 1], [5, 1], [23, -1], [21, 2]])
+  })
+
+  it('formats either supported notation without changing its turns', () => {
+    const steps = parseFormula('2(-1), 4(1), 6(2)', 24).steps
+    expect(formatFormula(steps, 'speed')).toBe('2- 4+ 6x')
+    expect(formatFormula(steps, 'joint')).toBe('2(-1), 4(1), 6(2)')
+  })
+
+  it('tolerates parenthesized no-ops and negative half-turns', () => {
+    const result = parseFormula('2(0), 3(-2), 4(2)', 24)
+    expect(result.errors).toEqual([])
+    expect(result.steps.map(({ joint, turn }) => [joint, turn]))
+      .toEqual([[2, 2], [3, 2]])
+  })
+
   it('accumulates repeated joint turns at a selected step', () => {
-    const steps = parseFormula('1(1), 2(-1), 1(1)', 24).steps
+    const steps = parseFormula('2(1), 3(-1), 2(1)', 24).steps
     expect(turnsAtStep(steps, 2, 24).slice(0, 2)).toEqual([1, -1])
     expect(turnsAtStep(steps, 3, 24).slice(0, 2)).toEqual([2, -1])
   })
