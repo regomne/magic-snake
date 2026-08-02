@@ -32,6 +32,7 @@ export const SHAPE_PRESETS = [
   { id: 'straight-48', name: '48 段 · 直尺', nameEn: '48-piece · Straight', pieceCount: 48, formula: '000000000000000000000000000000000000000000000000' },
   { id: 'star-48', name: '48 段 · 五角星', nameEn: '48-piece · Star', pieceCount: 48, formula: '013022013310220311302201331022031130220133102203' },
   { id: 'star-2-48', name: '48 段 · 五角星 2', nameEn: '48-piece · Star 2', pieceCount: 48, formula: '002201133022033110220113302203311022011330220331' },
+  { id: 'starfish-48', name: '48 段 · 海星', nameEn: '48-piece · Starfish', pieceCount: 48, formula: '010220111313330220130220310220130220310220333131' },
   { id: 'symmetry-48', name: '48 段 · 对称造型', nameEn: '48-piece · Symmetry', pieceCount: 48, formula: '020130013001133022013001133001300130220113300130' },
   { id: 'barbell-72', name: '72 段 · 杠铃', nameEn: '72-piece · Barbell', pieceCount: 72, formula: '011131331311313313113133300000000000000000000000333131131331311313313111' },
   { id: 'camel-72', name: '72 段 · 骆驼', nameEn: '72-piece · Camel', pieceCount: 72, formula: '011131102201131113331330220331331133133022033133333313302203313330020002' },
