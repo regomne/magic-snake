@@ -89,6 +89,9 @@ function App() {
   const textStart = useRef(formula)
   const stepRefs = useRef<Array<HTMLButtonElement | null>>([])
   const resumePlaybackAfterView = useRef(false)
+  const scheduledPlaybackDueAt = useRef(0)
+  const pausedPlaybackDueAt = useRef(0)
+  const resumeDelayAfterView = useRef<number | undefined>(undefined)
 
   const parsed = useMemo(() => parseFormula(formula, pieceCount), [formula, pieceCount])
   const steps = parsed.steps
@@ -119,16 +122,19 @@ function App() {
   useEffect(() => {
     if (!playing) return
     if (currentStep >= steps.length) { setPlaying(false); return }
+    const delay = resumeDelayAfterView.current ?? animationDuration * 1000 + pauseMs
+    resumeDelayAfterView.current = undefined
+    scheduledPlaybackDueAt.current = performance.now() + delay
     const timer = window.setTimeout(
       () => setCurrentStep((step) => {
         const next = Math.min(step + 1, steps.length)
         setSelectedPiece(steps[next - 1] ? steps[next - 1].joint + 1 : undefined)
         return next
       }),
-      animationDuration * 1000 + pauseMs,
+      delay,
     )
     return () => window.clearTimeout(timer)
-  }, [playing, currentStep, steps.length, animationDuration, pauseMs])
+  }, [playing, currentStep, steps, animationDuration, pauseMs])
 
   useEffect(() => {
     if (currentStep > 0) stepRefs.current[currentStep - 1]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
@@ -143,13 +149,19 @@ function App() {
 
   function startViewControl() {
     resumePlaybackAfterView.current = playing
+    pausedPlaybackDueAt.current = scheduledPlaybackDueAt.current || performance.now() + animationDuration * 1000 + pauseMs
     setViewInteracting(true)
     if (playing) setPlaying(false)
   }
 
   function endViewControl() {
     setViewInteracting(false)
-    if (resumePlaybackAfterView.current) setPlaying(true)
+    if (resumePlaybackAfterView.current) {
+      // The current joint animation keeps running while the camera is being
+      // handled. Only preserve whatever remains of its original pause window.
+      resumeDelayAfterView.current = Math.max(0, pausedPlaybackDueAt.current - performance.now())
+      setPlaying(true)
+    }
     resumePlaybackAfterView.current = false
   }
 
@@ -291,7 +303,7 @@ function App() {
     const onKeyDown = (event: KeyboardEvent) => {
       const editing = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement
       if (editing) return
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? redo() : undo(); return }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); if (event.shiftKey) redo(); else undo(); return }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); redo(); return }
       if (event.key === '1') rotateSelected(1)
       if (event.key === '-') rotateSelected(-1)
@@ -372,7 +384,7 @@ function App() {
             steps={steps}
             currentStep={currentStep}
             animationDuration={animationDuration}
-            animationPaused={viewInteracting}
+            animationPaused={false}
             autoPlaying={autoViewport && playing}
             viewportFitSignal={viewportFitSignal}
             viewportFitActive={preparingPlayback || (autoViewport && playing)}
@@ -422,7 +434,7 @@ function App() {
       </footer>
 
       {notice && <div className="toast" role="status">{notice}</div>}
-      {showHelp && <div className="modal-backdrop" onMouseDown={() => setShowHelp(false)}><article className="help-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setShowHelp(false)}>×</button><span className="eyebrow">WORKBENCH</span><h2>直接设计魔尺</h2><p>点击任意方块选择它的上一个关节，再使用旋转按钮。模型、公式和右侧教学步骤会自动同步。</p><div className="help-code">1：顺时针　−：逆时针　2：180°</div><ul><li><b>Ctrl/⌘ Z</b> 撤销，<b>Ctrl/⌘ Shift Z</b> 重做</li><li>整数晶格检查每一步完成后的最终空间占位</li><li>公式中关节 1 位于第 1、2 块之间</li></ul><p>工作内容会自动保存在浏览器中，也可以导出 JSON 或通过 URL 分享。</p></article></div>}
+      {showHelp && <div className="modal-backdrop" onMouseDown={() => setShowHelp(false)}><article className="help-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setShowHelp(false)}>×</button><span className="eyebrow">WORKBENCH</span><h2>直接设计魔尺</h2><p>点击任意方块选择它的上一个关节，再使用旋转按钮。模型、公式和右侧教学步骤会自动同步。</p><div className="help-code">1：顺时针 −：逆时针 2：180°</div><ul><li><b>Ctrl/⌘ Z</b> 撤销，<b>Ctrl/⌘ Shift Z</b> 重做</li><li>整数晶格检查每一步完成后的最终空间占位</li><li>公式中关节 1 位于第 1、2 块之间</li></ul><p>工作内容会自动保存在浏览器中，也可以导出 JSON 或通过 URL 分享。</p></article></div>}
     </main>
   )
 }

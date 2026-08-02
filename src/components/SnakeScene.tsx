@@ -205,6 +205,9 @@ function SnakeModel({
 
   useLayoutEffect(() => {
     updateFoldedBounds(targetFitTransforms)
+    // updateFoldedBounds operates only on the values listed here and is kept
+    // local so it can share the already memoized geometry collection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetFitTransforms, foldedPieceCount])
 
   // In demand-driven mode a React state change schedules the first frame, then
@@ -348,7 +351,7 @@ function CameraRig({
   onViewControlStart?: () => void
   onViewControlEnd?: () => void
 }) {
-  const controls = useRef<any>(null)
+  const controls = useRef<CameraControlsImpl | null>(null)
   const appliedFocus = useRef(new Vector3(Number.NaN, Number.NaN, Number.NaN))
   const userControlling = useRef(false)
   const lastFitStep = useRef(0)
