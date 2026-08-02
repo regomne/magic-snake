@@ -33,6 +33,7 @@ interface SnakeSceneProps {
   autoPlaying?: boolean
   viewportFitSignal?: number
   viewportFitActive?: boolean
+  viewportFitPadding?: number
   viewportLocked?: boolean
   onViewportFitComplete?: () => void
   onBlockedZoom?: () => void
@@ -346,6 +347,7 @@ function CameraRig({
   autoPlaying,
   viewportFitSignal,
   viewportFitActive,
+  viewportFitPadding,
   viewportLocked,
   onViewportFitComplete,
   onBlockedZoom,
@@ -360,6 +362,7 @@ function CameraRig({
   autoPlaying: boolean
   viewportFitSignal: number
   viewportFitActive: boolean
+  viewportFitPadding: number
   viewportLocked: boolean
   onViewportFitComplete?: () => void
   onBlockedZoom?: () => void
@@ -451,7 +454,7 @@ function CameraRig({
         const fittedDistance = Math.max(
           2,
           minimumPlaybackDistance,
-          sphere.radius / Math.sin(limitingHalfFov) * 1.08,
+          sphere.radius / Math.sin(limitingHalfFov) * viewportFitPadding,
         )
         // Starting a new playback may move in to the first block. Enabling the
         // option during playback follows the continuous rule: never zoom in.
@@ -653,6 +656,7 @@ export function SnakeScene(props: SnakeSceneProps) {
         autoPlaying={props.autoPlaying ?? false}
         viewportFitSignal={props.viewportFitSignal ?? 0}
         viewportFitActive={props.viewportFitActive ?? false}
+        viewportFitPadding={props.viewportFitPadding ?? 1.08}
         viewportLocked={props.viewportLocked ?? false}
         onViewportFitComplete={props.onViewportFitComplete}
         onBlockedZoom={props.onBlockedZoom}

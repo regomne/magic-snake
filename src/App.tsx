@@ -58,6 +58,7 @@ function App() {
   const [autoViewport, setAutoViewport] = useState(true)
   const [viewportFitSignal, setViewportFitSignal] = useState(0)
   const [preparingPlayback, setPreparingPlayback] = useState(false)
+  const [fittingPreset, setFittingPreset] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [resetSignal, setResetSignal] = useState(0)
   const [viewInteracting, setViewInteracting] = useState(false)
@@ -235,6 +236,9 @@ function App() {
     setCurrentStep(nextParsed.steps.length)
     setSelectedPiece(undefined)
     setPlaying(false)
+    setPreparingPlayback(false)
+    setFittingPreset(true)
+    setViewportFitSignal((value) => value + 1)
     writeShapeToHash(preset.pieceCount, preset.formula)
   }
 
@@ -351,9 +355,11 @@ function App() {
             animationPaused={false}
             autoPlaying={autoViewport && playing}
             viewportFitSignal={viewportFitSignal}
-            viewportFitActive={preparingPlayback || (autoViewport && playing)}
+            viewportFitActive={fittingPreset || preparingPlayback || (autoViewport && playing)}
+            viewportFitPadding={fittingPreset ? 0.94 : 1.08}
             viewportLocked={autoViewport && (playing || preparingPlayback || (viewInteracting && resumePlaybackAfterView.current))}
             onViewportFitComplete={() => {
+              if (fittingPreset) setFittingPreset(false)
               if (!preparingPlayback) return
               setPreparingPlayback(false)
               setPlaying(true)

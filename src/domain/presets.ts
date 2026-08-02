@@ -45,7 +45,6 @@ export const SHAPE_PRESETS = [
     formula: '032331311313313112310132110130312331133131131332300000000000220000000000',
   },
   { id: 'octahedron-72', name: '72 段 · 八面体', nameEn: '72-piece · Octahedron', pieceCount: 72, formula: '000003100003100001300001300003100003100001300001300003100003100001300001' },
-  { id: 'straight-72', name: '72 段 · 直尺', nameEn: '72-piece · Straight', pieceCount: 72, formula: '000000000000000000000000000000000000000000000000000000000000000000000000' },
   { id: 'truncated-tetrahedron-72', name: '72 段 · 截角四面体', nameEn: '72-piece · Truncated tetrahedron', pieceCount: 72, formula: '010030010030010013003022010030010013003001003001003022010013003001003022' },
   { id: 'tetrahedron-72', name: '72 段 · 四面体', nameEn: '72-piece · Tetrahedron', pieceCount: 72, formula: '020001300001300001133000220001300001133000013000013000220001133000013000' },
   { id: 'tipi-72', name: '72 段 · 帐篷', nameEn: '72-piece · Tipi', pieceCount: 72, formula: '033000002200000111102203333000002200000111102203333000002200000111102203' },
