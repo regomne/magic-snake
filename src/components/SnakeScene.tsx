@@ -27,9 +27,12 @@ interface SnakeSceneProps {
   currentStep: number
   animationDuration: number
   resetSignal: number
+  animationPaused?: boolean
   selectedPiece?: number
   collisionPieces?: number[]
   onSelectPiece?: (piece?: number) => void
+  onViewControlStart?: () => void
+  onViewControlEnd?: () => void
 }
 
 function createPrismGeometry(upper: boolean) {
@@ -94,11 +97,12 @@ function SnakeModel({
   steps,
   currentStep,
   animationDuration,
+  animationPaused = false,
   selectedPiece,
   collisionPieces = [],
   onSelectPiece,
   focusTarget,
-}: Omit<SnakeSceneProps, 'resetSignal'> & { focusTarget: MutableRefObject<Vector3> }) {
+}: Omit<SnakeSceneProps, 'resetSignal' | 'onViewControlStart' | 'onViewControlEnd'> & { focusTarget: MutableRefObject<Vector3> }) {
   const groups = useRef<Array<Group | null>>([])
   const materials = useRef<Array<MeshPhysicalMaterial | null>>([])
   const blinkTimer = useRef<number | undefined>(undefined)
@@ -163,13 +167,13 @@ function SnakeModel({
 
   // In demand-driven mode a React state change schedules the first frame, then
   // the animation explicitly asks for more frames only until every joint settles.
-  useEffect(() => invalidate(), [targetTurns, selectedPiece, invalidate])
+  useEffect(() => invalidate(), [targetTurns, selectedPiece, animationPaused, invalidate])
 
   useFrame(({ clock }, rawDelta) => {
     // With frameloop="demand", the first frame after a long idle can report the
     // whole idle interval as delta. Cap it so a new joint turn cannot snap to
     // its target in that single frame.
-    const delta = Math.min(rawDelta, 1 / 30)
+    const delta = animationPaused ? 0 : Math.min(rawDelta, 1 / 30)
     const lambda = animationDuration <= 0 ? 1000 : 5 / animationDuration
     const alpha = 1 - Math.exp(-lambda * delta)
     const currentTurns = animatedTurns.current
@@ -205,7 +209,7 @@ function SnakeModel({
         material.emissiveIntensity = 0
       }
     })
-    if (isAnimating) invalidate()
+    if (isAnimating && !animationPaused) invalidate()
     else if (selectedPiece !== undefined && blinkTimer.current === undefined) {
       // A slow highlight does not need a 60 fps render loop. Updating at 20 fps
       // keeps the pulse smooth while preserving the low idle cost of the scene.
@@ -273,9 +277,22 @@ function SnakeModel({
   )
 }
 
-function CameraRig({ resetSignal, pieceCount, focusTarget }: { resetSignal: number; pieceCount: number; focusTarget: MutableRefObject<Vector3> }) {
+function CameraRig({
+  resetSignal,
+  pieceCount,
+  focusTarget,
+  onViewControlStart,
+  onViewControlEnd,
+}: {
+  resetSignal: number
+  pieceCount: number
+  focusTarget: MutableRefObject<Vector3>
+  onViewControlStart?: () => void
+  onViewControlEnd?: () => void
+}) {
   const controls = useRef<any>(null)
   const appliedFocus = useRef(new Vector3(Number.NaN, Number.NaN, Number.NaN))
+  const userControlling = useRef(false)
   const { camera } = useThree()
   useEffect(() => {
     if (controls.current) controls.current.mouseButtons.right = CameraControlsImpl.ACTION.OFFSET
@@ -291,7 +308,7 @@ function CameraRig({ resetSignal, pieceCount, focusTarget }: { resetSignal: numb
   }, [camera, resetSignal, pieceCount, focusTarget])
   useFrame(() => {
     const controlsInstance = controls.current
-    if (!controlsInstance || appliedFocus.current.distanceToSquared(focusTarget.current) < 0.000001) return
+    if (!controlsInstance || userControlling.current || appliedFocus.current.distanceToSquared(focusTarget.current) < 0.000001) return
     const target = focusTarget.current
     // CameraControls keeps the current camera transform and uses a focal offset,
     // so an off-centre block can become the real orbit pivot without jumping to
@@ -299,7 +316,17 @@ function CameraRig({ resetSignal, pieceCount, focusTarget }: { resetSignal: numb
     controlsInstance.setOrbitPoint(target.x, target.y, target.z)
     appliedFocus.current.copy(target)
   })
-  return <CameraControls ref={controls} makeDefault minDistance={2} maxDistance={200} smoothTime={0.18} />
+  return (
+    <CameraControls
+      ref={controls}
+      makeDefault
+      minDistance={2}
+      maxDistance={200}
+      smoothTime={0.18}
+      onControlStart={() => { userControlling.current = true; onViewControlStart?.() }}
+      onControlEnd={() => { userControlling.current = false; onViewControlEnd?.() }}
+    />
+  )
 }
 
 export function SnakeScene(props: SnakeSceneProps) {
@@ -347,7 +374,13 @@ export function SnakeScene(props: SnakeSceneProps) {
         resolution={256}
         color="#52605a"
       />
-      <CameraRig resetSignal={props.resetSignal} pieceCount={props.pieceCount} focusTarget={focusTarget} />
+      <CameraRig
+        resetSignal={props.resetSignal}
+        pieceCount={props.pieceCount}
+        focusTarget={focusTarget}
+        onViewControlStart={props.onViewControlStart}
+        onViewControlEnd={props.onViewControlEnd}
+      />
     </Canvas>
   )
 }

@@ -76,6 +76,7 @@ function App() {
   const [pauseMs, setPauseMs] = useState(350)
   const [showHelp, setShowHelp] = useState(false)
   const [resetSignal, setResetSignal] = useState(0)
+  const [viewInteracting, setViewInteracting] = useState(false)
   const [selectedPiece, setSelectedPiece] = useState<number | undefined>()
   const [undoStack, setUndoStack] = useState<string[]>([])
   const [redoStack, setRedoStack] = useState<string[]>([])
@@ -85,6 +86,7 @@ function App() {
   const importRef = useRef<HTMLInputElement>(null)
   const textStart = useRef(formula)
   const stepRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const resumePlaybackAfterView = useRef(false)
 
   const parsed = useMemo(() => parseFormula(formula, pieceCount), [formula, pieceCount])
   const steps = parsed.steps
@@ -135,6 +137,18 @@ function App() {
     setCurrentStep(next)
     setSelectedPiece(next > 0 ? steps[next - 1].joint + 1 : undefined)
     setPlaying(false)
+  }
+
+  function startViewControl() {
+    resumePlaybackAfterView.current = playing
+    setViewInteracting(true)
+    if (playing) setPlaying(false)
+  }
+
+  function endViewControl() {
+    setViewInteracting(false)
+    if (resumePlaybackAfterView.current) setPlaying(true)
+    resumePlaybackAfterView.current = false
   }
 
   function setFinishedFormula(next: string) {
@@ -336,7 +350,19 @@ function App() {
 
         <section className="viewer-panel">
           <div className="viewer-badge">{pieceCount} 段 · {PIECE_SIZE_MM} mm{selectedPiece ? ` · 方块 ${selectedPiece}${selectedJoint ? ` / 关节 ${selectedJoint}` : ''}` : ''}</div>
-          <SnakeScene pieceCount={pieceCount} steps={steps} currentStep={currentStep} animationDuration={animationDuration} resetSignal={resetSignal} selectedPiece={selectedPiece} collisionPieces={collisionPieces} onSelectPiece={(piece) => { setSelectedPiece(piece); setPlaying(false) }} />
+          <SnakeScene
+            pieceCount={pieceCount}
+            steps={steps}
+            currentStep={currentStep}
+            animationDuration={animationDuration}
+            animationPaused={viewInteracting}
+            resetSignal={resetSignal}
+            selectedPiece={selectedPiece}
+            collisionPieces={collisionPieces}
+            onSelectPiece={(piece) => { setSelectedPiece(piece); setPlaying(false) }}
+            onViewControlStart={startViewControl}
+            onViewControlEnd={endViewControl}
+          />
           <div className="viewer-hint">点击选择方块 · 拖动旋转视角 · 滚轮缩放</div>
         </section>
 
