@@ -22,10 +22,11 @@ button:disabled { cursor: not-allowed; opacity: .4; }
 .icon-button { width: 38px; padding: 0; justify-content: center; }
 .workspace { display: grid; grid-template-columns: 320px minmax(0, 1fr) 270px; min-height: 0; }
 .editor-panel { background: #fbfcfa; border-right: 1px solid #d6ddda; padding: 25px 22px 16px; display: flex; flex-direction: column; min-height: 0; overflow: auto; }
-.panel-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
 .eyebrow { font: 500 10px/1 'DM Mono', monospace; color: #e05c2f; letter-spacing: .18em; }
-.panel-heading h2, .help-modal h2 { font-size: 20px; margin: 5px 0 0; }
+.help-modal h2 { font-size: 20px; margin: 5px 0 0; }
 select { border: 1px solid #ccd5d0; border-radius: 7px; background: #fff; padding: 7px 28px 7px 10px; color: #24342c; }
+.preset-row, .length-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.preset-row { margin-bottom: 13px; }.preset-row label, .length-row label { font-size: 11px; color: #66736d; white-space: nowrap; }.preset-row select { min-width: 178px; max-width: 100%; }.length-row { padding: 11px 0 15px; margin-bottom: 12px; border-top: 1px solid #e1e6e3; border-bottom: 1px solid #e1e6e3; }
 .formula-label { font-size: 12px; color: #66736d; margin-bottom: 7px; }
 .formula-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
 .formula-heading .formula-label { margin: 0; }
@@ -52,7 +53,6 @@ textarea.formula-error { border-color: #d14832; background: #fff8f5; box-shadow:
 .error-box p { margin: 3px 0; }
 .collision-box { border-left: 3px solid #d47a28; background: #fff6e9; color: #814619; padding: 8px 10px; margin: 0 0 12px; font-size: 10px; border-radius: 2px 6px 6px 2px; }
 .collision-box p { margin: 4px 0 0; line-height: 1.5; }
-.saved-shapes { width: 100%; margin-bottom: 10px; font-size: 10px; }
 .step-list-heading { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; padding: 13px 1px 10px; border-top: 1px solid #e1e6e3; }
 .step-list-heading b { color: #87918c; font-weight: 500; }
 .step-list { min-height: 0; overflow: auto; margin: 0 -7px; padding: 0 7px 15px; scrollbar-width: thin; }
@@ -74,18 +74,18 @@ textarea.formula-error { border-color: #d14832; background: #fff8f5; box-shadow:
 .viewer-badge, .viewer-hint { position: absolute; z-index: 2; color: #6c7972; background: rgba(250, 252, 250, .75); backdrop-filter: blur(8px); border: 1px solid rgba(190, 201, 195, .65); }
 .viewer-badge { top: 18px; left: 20px; padding: 7px 11px; border-radius: 20px; font: 500 10px 'DM Mono', monospace; letter-spacing: .05em; }
 .viewer-hint { bottom: 16px; left: 50%; transform: translateX(-50%); padding: 6px 12px; border-radius: 6px; font-size: 10px; white-space: nowrap; }
-.player { background: #fbfcfa; border-top: 1px solid #d3dbd6; display: grid; grid-template-columns: 270px minmax(220px, 520px) minmax(320px, 1fr); gap: 24px; align-items: center; padding: 17px 27px; z-index: 5; box-shadow: 0 -8px 24px rgba(28, 48, 38, .04); }
+.player { background: #fbfcfa; border-top: 1px solid #d3dbd6; display: grid; grid-template-columns: 270px minmax(0, 1fr) auto; gap: 24px; align-items: center; padding: 17px 27px; z-index: 5; box-shadow: 0 -8px 24px rgba(28, 48, 38, .04); }
 .transport { display: flex; align-items: center; gap: 5px; }
 .transport button { border: 0; background: transparent; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; }
 .transport button:hover { background: #e9eeeb; }.transport .play-button { width: 50px; height: 50px; margin: 0 5px; color: #fff; background: #245ba6; box-shadow: 0 4px 13px rgba(36, 91, 166, .25); }.transport .play-button:hover { background: #174b94; }
 .timeline input { width: 100%; height: 4px; appearance: none; background: linear-gradient(to right, #285ca8 var(--progress), #d6ddda var(--progress)); border-radius: 3px; }
 .timeline input::-webkit-slider-thumb { appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 3px solid #285ca8; box-shadow: 0 1px 4px #aeb9b4; }
 .timeline-copy { display: flex; justify-content: space-between; margin-top: 10px; font-size: 11px; color: #66736d; }.timeline-copy b { font: 500 11px 'DM Mono'; }
-.play-settings { display: grid; grid-template-columns: repeat(3, minmax(90px, 1fr)); gap: 14px; }.play-settings label { min-width: 0; font-size: 10px; color: #718078; display: flex; flex-direction: column; gap: 4px; }.play-settings select { width: 100%; padding-top: 5px; padding-bottom: 5px; font-size: 11px; }
+.play-settings { display: grid; grid-template-columns: 92px 92px 108px; justify-content: end; gap: 12px; }.play-settings label { min-width: 0; font-size: 10px; color: #718078; display: flex; flex-direction: column; gap: 4px; }.play-settings select { width: 100%; padding-top: 5px; padding-bottom: 5px; font-size: 11px; }
 .auto-viewport > span:last-child { height: 30px; display: flex; align-items: center; gap: 5px; color: #34463d; white-space: nowrap; }.auto-viewport input { accent-color: #285ca8; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 20; background: rgba(15, 26, 21, .42); backdrop-filter: blur(4px); display: grid; place-items: center; padding: 20px; }
 .help-modal { position: relative; background: #fbfcfa; width: min(520px, 100%); border-radius: 14px; padding: 30px; box-shadow: 0 20px 70px rgba(20, 36, 28, .2); }
-.help-modal p, .help-modal li { font-size: 13px; line-height: 1.75; color: #4e5d55; }.help-modal ul { padding-left: 20px; }.help-code { font: 500 14px 'DM Mono'; background: #edf1ee; border-radius: 7px; padding: 13px; margin: 18px 0; }
+.help-modal p, .help-modal li { font-size: 13px; line-height: 1.75; color: #4e5d55; }.help-modal ul { padding-left: 20px; }
 .modal-close { position: absolute; right: 16px; top: 14px; border: 0; background: transparent; font-size: 26px; color: #7a8780; }
 .toast { position: fixed; z-index: 40; left: 50%; bottom: 130px; transform: translateX(-50%); color: #fff; background: rgba(24, 37, 31, .92); box-shadow: 0 8px 28px rgba(15, 25, 20, .2); border-radius: 8px; padding: 9px 14px; font-size: 12px; pointer-events: none; }
 

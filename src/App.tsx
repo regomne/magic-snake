@@ -8,7 +8,6 @@ import {
   Redo2,
   RotateCcw,
   RotateCw,
-  Save,
   Share2,
   SkipBack,
   SkipForward,
@@ -20,17 +19,17 @@ import { formatFormula, parseFormula } from './domain/formula'
 import type { FormulaNotation, Turn } from './domain/formula'
 
 const LENGTHS = [24, 36, 48, 72] as const
-const EXAMPLE = '1(1), 3(-1), 5(2), 7(1), 9(-1), 11(1), 13(2), 15(-1), 17(1), 19(2), 21(-1), 23(1)'
+const EXAMPLE = '2(1), 4(-1), 6(2), 8(1), 10(-1), 12(1), 14(2), 16(-1), 18(1), 20(2), 22(-1), 24(1)'
+const PRESETS = [
+  {
+    id: 'ball-24',
+    name: '24 段球形',
+    pieceCount: 24,
+    formula: '2- 3- 4+ 6+ 7+ 5- 8- 9+ 11- 10- 12+ 14+ 15+ 13- 16- 17+ 19- 20+ 21- 18- 23+ 24- 22+',
+  },
+  { id: 'demo-24', name: '24 段演示造型', pieceCount: 24, formula: EXAMPLE },
+] as const
 const STORAGE_KEY = 'magic-snake:workspace:v2'
-const SHAPES_KEY = 'magic-snake:shapes:v1'
-
-interface SavedShape {
-  id: string
-  name: string
-  formula: string
-  pieceCount: number
-  savedAt: string
-}
 
 function loadInitialState() {
   const query = new URLSearchParams(window.location.search)
@@ -44,13 +43,6 @@ function loadInitialState() {
     if (LENGTHS.includes(saved.pieceCount) && typeof saved.formula === 'string') return saved
   } catch { /* Use the bundled example when saved data is damaged. */ }
   return { pieceCount: 24, formula: EXAMPLE }
-}
-
-function loadSavedShapes(): SavedShape[] {
-  try {
-    const value = JSON.parse(localStorage.getItem(SHAPES_KEY) ?? '[]')
-    return Array.isArray(value) ? value : []
-  } catch { return [] }
 }
 
 function App() {
@@ -75,7 +67,6 @@ function App() {
   const [redoStack, setRedoStack] = useState<string[]>([])
   const [preventCollision, setPreventCollision] = useState(true)
   const [notice, setNotice] = useState('')
-  const [savedShapes, setSavedShapes] = useState<SavedShape[]>(loadSavedShapes)
   const textStart = useRef(formula)
   const stepRefs = useRef<Array<HTMLButtonElement | null>>([])
   const resumePlaybackAfterView = useRef(false)
@@ -229,6 +220,20 @@ function App() {
     if (!parsed.errors.length) setFormula(formatFormula(parsed.steps, notation))
   }
 
+  function applyPreset(id: string) {
+    const preset = PRESETS.find((item) => item.id === id)
+    if (!preset) return
+    const nextParsed = parseFormula(preset.formula, preset.pieceCount)
+    setUndoStack((stack) => [...stack.slice(-99), formula])
+    setRedoStack([])
+    setPieceCount(preset.pieceCount)
+    setFormula(preset.formula)
+    if (nextParsed.notation) setFormulaNotation(nextParsed.notation)
+    setCurrentStep(nextParsed.steps.length)
+    setSelectedPiece(undefined)
+    setPlaying(false)
+  }
+
   async function share() {
     const url = new URL(window.location.href)
     url.search = ''
@@ -237,27 +242,6 @@ function App() {
     history.replaceState(null, '', url)
     try { await navigator.clipboard.writeText(url.toString()); setNotice('分享链接已复制') }
     catch { setNotice('链接已写入地址栏') }
-  }
-
-  function saveShape() {
-    const name = window.prompt('给这个造型起个名字', `我的 ${pieceCount} 段造型`)
-    if (!name?.trim()) return
-    const shape: SavedShape = { id: crypto.randomUUID(), name: name.trim(), formula, pieceCount, savedAt: new Date().toISOString() }
-    const next = [shape, ...savedShapes].slice(0, 30)
-    setSavedShapes(next)
-    localStorage.setItem(SHAPES_KEY, JSON.stringify(next))
-    setNotice('造型已保存到本机')
-  }
-
-  function openSavedShape(shape: SavedShape) {
-    const nextParsed = parseFormula(shape.formula, shape.pieceCount)
-    setUndoStack((stack) => [...stack, formula])
-    setRedoStack([])
-    setPieceCount(shape.pieceCount)
-    setFormula(shape.formula)
-    if (nextParsed.notation) setFormulaNotation(nextParsed.notation)
-    setCurrentStep(nextParsed.steps.length)
-    setPlaying(false)
   }
 
   useEffect(() => {
@@ -283,7 +267,6 @@ function App() {
         <div className="top-actions">
           <button className="icon-button" aria-label="撤销" title="撤销 Ctrl/⌘ Z" disabled={!undoStack.length} onClick={undo}><Undo2 size={18} /></button>
           <button className="icon-button" aria-label="重做" title="重做 Ctrl/⌘ Shift Z" disabled={!redoStack.length} onClick={redo}><Redo2 size={18} /></button>
-          <button className="ghost-button" onClick={saveShape}><Save size={17} /> 保存</button>
           <button className="ghost-button" onClick={share}><Share2 size={17} /> 分享</button>
           <button className="ghost-button" onClick={() => setResetSignal((value) => value + 1)}><RotateCcw size={17} /> 重置视角</button>
           <button className="icon-button" aria-label="使用说明" onClick={() => setShowHelp(true)}><CircleHelp size={20} /></button>
@@ -292,15 +275,23 @@ function App() {
 
       <section className="workspace">
         <aside className="editor-panel">
-          <div className="panel-heading">
-            <div><span className="eyebrow">DESIGN</span><h2>造型编辑器</h2></div>
-            <select value={pieceCount} onChange={(event) => { const length = Number(event.target.value); setPieceCount(length); setCurrentStep(parseFormula(formula, length).steps.length); setPlaying(false); setSelectedPiece(undefined) }}>
+          <div className="preset-row">
+            <label htmlFor="preset">预置公式</label>
+            <select id="preset" defaultValue="" onChange={(event) => { applyPreset(event.target.value); event.target.value = '' }}>
+              <option value="" disabled>选择预置造型…</option>
+              {PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
+            </select>
+          </div>
+
+          <div className="length-row">
+            <label htmlFor="piece-count">魔尺段数</label>
+            <select id="piece-count" value={pieceCount} onChange={(event) => { const length = Number(event.target.value); setPieceCount(length); setCurrentStep(parseFormula(formula, length).steps.length); setPlaying(false); setSelectedPiece(undefined) }}>
               {LENGTHS.map((length) => <option key={length} value={length}>{length} 段</option>)}
             </select>
           </div>
 
           <div className="formula-heading">
-            <label className="formula-label" htmlFor="formula">公式（模型操作会自动同步）</label>
+            <label className="formula-label" htmlFor="formula">公式</label>
             <select aria-label="公式格式" value={formulaNotation} onChange={(event) => changeFormulaNotation(event.target.value as FormulaNotation)}>
               <option value="speed">标准速拧格式</option>
               <option value="joint">括号格式（方块）</option>
@@ -339,8 +330,6 @@ function App() {
               <button onClick={() => commitFormula('')}>一键拉直</button>
             </div>
           </section>
-          {savedShapes.length > 0 && <select className="saved-shapes" defaultValue="" onChange={(event) => { const shape = savedShapes.find((item) => item.id === event.target.value); if (shape) openSavedShape(shape); event.target.value = '' }}><option value="" disabled>打开已保存造型…</option>{savedShapes.map((shape) => <option key={shape.id} value={shape.id}>{shape.name} · {shape.pieceCount} 段</option>)}</select>}
-
         </aside>
 
         <section className="viewer-panel">
@@ -400,7 +389,7 @@ function App() {
       </footer>
 
       {notice && <div className="toast" role="status">{notice}</div>}
-      {showHelp && <div className="modal-backdrop" onMouseDown={() => setShowHelp(false)}><article className="help-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setShowHelp(false)}>×</button><span className="eyebrow">WORKBENCH</span><h2>直接设计魔尺</h2><p>点击任意方块选择它的上一个关节，再使用旋转按钮。模型、公式和右侧步骤会自动同步。</p><div className="help-code">1：顺时针 −：逆时针 2：180°</div><ul><li><b>Ctrl/⌘ Z</b> 撤销，<b>Ctrl/⌘ Shift Z</b> 重做</li><li>整数晶格检查每一步完成后的最终空间占位</li><li>公式编号代表方块；方块 1 没有前置关节，会被忽略</li></ul><p>工作内容会自动保存在浏览器中，也可以通过 URL 分享。</p></article></div>}
+      {showHelp && <div className="modal-backdrop" onMouseDown={() => setShowHelp(false)}><article className="help-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setShowHelp(false)}>×</button><span className="eyebrow">WORKBENCH</span><h2>直接设计魔尺</h2><p>点击任意方块选择它的上一个关节，再使用旋转按钮。模型、公式和右侧步骤会自动同步。</p><ul><li><b>Ctrl/⌘ Z</b> 撤销，<b>Ctrl/⌘ Shift Z</b> 重做</li><li>整数晶格检查每一步完成后的最终空间占位</li></ul><p>工作内容会自动保存在浏览器中，也可以通过 URL 分享。</p></article></div>}
     </main>
   )
 }
