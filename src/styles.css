@@ -31,6 +31,7 @@ select { border: 1px solid #ccd5d0; border-radius: 7px; background: #fff; paddin
 .formula-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
 .formula-heading .formula-label { margin: 0; }
 .formula-heading select { max-width: 126px; padding: 5px 24px 5px 8px; font-size: 10px; }
+.manual-heading { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: #4f6057; }
 .joint-editor { background: #edf2f8; border: 1px solid #d5dfeb; border-radius: 10px; padding: 12px; margin: -3px 0 15px; }
 .joint-editor-title { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: #64736c; }
 .joint-editor-title b { font: 600 17px 'DM Mono', monospace; color: #245ba6; }

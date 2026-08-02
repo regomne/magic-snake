@@ -317,9 +317,10 @@ function App() {
           {parsed.errors.length > 0 && <div className="error-box">{parsed.errors.map((error) => <p key={error}>{error}</p>)}</div>}
           {collisionIssues.length > 0 && <div className="collision-box"><b>最终姿态检查：发现 {collisionIssues.length} 项</b><p>{collisionIssues.slice(0, 3).map((issue) => `步骤 ${issue.step}：方块 ${issue.pieces.join(' / ')} 占据重叠空间`).join('；')}</p></div>}
 
-          <section className="joint-editor" aria-label="关节编辑">
-            <div className="joint-editor-title"><span>{selectedPiece === undefined ? '点击模型选择方块' : `方块 ${selectedPiece} 的上一关节`}</span><b>{selectedJoint ?? '—'}</b></div>
-            <input aria-label="选择关节" type="range" min={1} max={pieceCount - 1} value={selectedJoint ?? 1} onChange={(event) => setSelectedPiece(Number(event.target.value) + 1)} />
+          <h3 className="manual-heading">手动编辑</h3>
+          <section className="joint-editor" aria-label="手动编辑">
+            <div className="joint-editor-title"><span>方块编号</span><b>{selectedPiece ?? '—'}</b></div>
+            <input aria-label="选择方块" type="range" min={2} max={pieceCount} value={selectedPiece ?? 2} onChange={(event) => setSelectedPiece(Number(event.target.value))} />
             <div className="joint-actions">
               <button disabled={selectedJoint === undefined} onClick={() => rotateSelected(-1)} title="快捷键 -"><RotateCcw size={17} />逆时针</button>
               <button disabled={selectedJoint === undefined} onClick={() => rotateSelected(2)} title="快捷键 2">180°</button>
