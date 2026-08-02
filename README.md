@@ -1,31 +1,31 @@
-# 魔尺造型工作台
+# Magic Snake Workbench
 
-一个在浏览器中编辑和演示魔尺造型的纯前端工具，支持 24、36、48 和 72 段魔尺。
+A browser-based 3D editor and player for designing Rubik's Snake shapes. It supports 24, 36, 48, and 72-piece snakes and runs entirely on the client side.
 
-![魔尺造型工作台示例](docs/magic-snake-workbench.png)
+![Magic Snake Workbench](docs/magic-snake-workbench.png)
 
-## 功能
+## Features
 
-- 在 3D 视图中选择方块并旋转对应关节
-- 输入或转换 0123 编码、标准速拧和括号公式
-- 浏览内置造型并逐步播放折叠过程
-- 精确检查最终姿态中的方块重叠
-- 自动调整播放视口，并支持鼠标和六轴按钮控制镜头
-- 通过 URL 哈希分享当前造型
-- 中文和英文界面
+- Select pieces in the 3D view and rotate their joints
+- Enter and convert between 0123 pose encoding, speed-solving notation, and parenthesized formulas
+- Browse built-in shapes and play their folding sequences step by step
+- Detect overlapping pieces in the final pose using exact geometry
+- Automatically frame shapes during playback and control the camera with the mouse or axis buttons
+- Share the current shape through the URL hash
+- Switch between Chinese and English interfaces
 
-## 本地运行
+## Local development
 
-需要 Node.js 和 npm。
+Node.js and npm are required.
 
 ```bash
 npm install
 npm run dev
 ```
 
-浏览器打开终端显示的本地地址即可使用。
+Open the local address shown in the terminal.
 
-## 检查与构建
+## Checks and production build
 
 ```bash
 npm run lint
