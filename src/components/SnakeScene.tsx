@@ -1,12 +1,16 @@
-import { ContactShadows, Environment, Lightformer, OrbitControls } from '@react-three/drei'
+import { CameraControls, CameraControlsImpl, ContactShadows, Environment, Lightformer } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import type { MutableRefObject } from 'react'
 import {
   ACESFilmicToneMapping,
+  Box3,
   DoubleSide,
+  Euler,
   ExtrudeGeometry,
   Group,
   Matrix4,
+  MeshPhysicalMaterial,
   PlaneGeometry,
   Quaternion,
   Shape,
@@ -22,6 +26,9 @@ interface SnakeSceneProps {
   currentStep: number
   animationDuration: number
   resetSignal: number
+  selectedPiece?: number
+  collisionPieces?: number[]
+  onSelectPiece?: (piece?: number) => void
 }
 
 function createPrismGeometry(upper: boolean) {
@@ -66,6 +73,7 @@ function createPrismGeometry(upper: boolean) {
   geometry.scale(shellScale, shellScale, shellScale)
   geometry.translate(centerX, centerY, 0)
   geometry.computeVertexNormals()
+  geometry.computeBoundingBox()
   return geometry
 }
 
@@ -80,8 +88,19 @@ function jointFrame(index: number) {
   return { normal, quaternion }
 }
 
-function SnakeModel({ pieceCount, steps, currentStep, animationDuration }: Omit<SnakeSceneProps, 'resetSignal'>) {
+function SnakeModel({
+  pieceCount,
+  steps,
+  currentStep,
+  animationDuration,
+  selectedPiece,
+  collisionPieces = [],
+  onSelectPiece,
+  focusTarget,
+}: Omit<SnakeSceneProps, 'resetSignal'> & { focusTarget: MutableRefObject<Vector3> }) {
   const groups = useRef<Array<Group | null>>([])
+  const materials = useRef<Array<MeshPhysicalMaterial | null>>([])
+  const blinkTimer = useRef<number | undefined>(undefined)
   const invalidate = useThree((state) => state.invalidate)
   const geometries = useMemo(() => [createPrismGeometry(false), createPrismGeometry(true)], [])
   const seamGeometry = useMemo(() => new PlaneGeometry(PIECE_SIZE * 0.965, PIECE_SIZE * 0.965), [])
@@ -95,9 +114,35 @@ function SnakeModel({ pieceCount, steps, currentStep, animationDuration }: Omit<
     [pieceCount],
   )
 
+  function updateFocusTarget(transforms: ReturnType<typeof calculateTransforms>) {
+    const rootRotation = new Quaternion().setFromEuler(new Euler(-0.18, 0.18, 0))
+    const bounds = new Box3()
+    transforms.forEach((transform, index) => {
+      const localBounds = geometries[index % 2].boundingBox
+      if (!localBounds) return
+      const center = localBounds.getCenter(new Vector3())
+        .applyQuaternion(transform.quaternion)
+        .add(transform.position)
+        .applyQuaternion(rootRotation)
+      if (selectedPiece === index + 1) focusTarget.current.copy(center)
+      for (const x of [localBounds.min.x, localBounds.max.x]) {
+        for (const y of [localBounds.min.y, localBounds.max.y]) {
+          for (const z of [localBounds.min.z, localBounds.max.z]) {
+            bounds.expandByPoint(new Vector3(x, y, z)
+              .applyQuaternion(transform.quaternion)
+              .add(transform.position)
+              .applyQuaternion(rootRotation))
+          }
+        }
+      }
+    })
+    if (selectedPiece === undefined && !bounds.isEmpty()) bounds.getCenter(focusTarget.current)
+  }
+
   useEffect(() => () => {
     geometries.forEach((geometry) => geometry.dispose())
     seamGeometry.dispose()
+    if (blinkTimer.current !== undefined) window.clearTimeout(blinkTimer.current)
   }, [geometries, seamGeometry])
   // Initialize newly mounted blocks before paint. Step changes deliberately do
   // not run this effect: useFrame is the only path from the old pose to the new.
@@ -110,15 +155,20 @@ function SnakeModel({ pieceCount, steps, currentStep, animationDuration }: Omit<
         group.quaternion.copy(target.quaternion)
       }
     })
+    updateFocusTarget(initialTransforms)
     // targets represents the zero/current pose at mount; pieceCount remounts the set.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pieceCount, initialTransforms])
 
   // In demand-driven mode a React state change schedules the first frame, then
   // the animation explicitly asks for more frames only until every joint settles.
-  useEffect(() => invalidate(), [targetTurns, invalidate])
+  useEffect(() => invalidate(), [targetTurns, selectedPiece, invalidate])
 
-  useFrame((_, delta) => {
+  useFrame(({ clock }, rawDelta) => {
+    // With frameloop="demand", the first frame after a long idle can report the
+    // whole idle interval as delta. Cap it so a new joint turn cannot snap to
+    // its target in that single frame.
+    const delta = Math.min(rawDelta, 1 / 30)
     const lambda = animationDuration <= 0 ? 1000 : 5 / animationDuration
     const alpha = 1 - Math.exp(-lambda * delta)
     const currentTurns = animatedTurns.current
@@ -137,7 +187,30 @@ function SnakeModel({ pieceCount, steps, currentStep, animationDuration }: Omit<
       group.position.copy(target.position)
       group.quaternion.copy(target.quaternion)
     })
+    updateFocusTarget(frameTransforms)
+    materials.current.forEach((material, index) => {
+      if (!material) return
+      const pieceNumber = index + 1
+      if (collisionPieces.includes(pieceNumber)) {
+        material.emissive.set('#a8160b')
+        material.emissiveIntensity = 0.65
+      } else if (selectedPiece === pieceNumber) {
+        material.emissive.set('#d66a24')
+        material.emissiveIntensity = 0.1 + (Math.sin(clock.elapsedTime * 2.4) + 1) * 0.1
+      } else {
+        material.emissive.set('#000000')
+        material.emissiveIntensity = 0
+      }
+    })
     if (isAnimating) invalidate()
+    else if (selectedPiece !== undefined && blinkTimer.current === undefined) {
+      // A slow highlight does not need a 60 fps render loop. Updating at 20 fps
+      // keeps the pulse smooth while preserving the low idle cost of the scene.
+      blinkTimer.current = window.setTimeout(() => {
+        blinkTimer.current = undefined
+        invalidate()
+      }, 50)
+    }
   })
 
   return (
@@ -145,13 +218,23 @@ function SnakeModel({ pieceCount, steps, currentStep, animationDuration }: Omit<
       {initialTransforms.map((_, index) => {
         const color = index % 2 === 0 ? '#1d5da7' : '#f1efe8'
         const joint = jointFrames[index]
+        const pieceNumber = index + 1
+        const colliding = collisionPieces.includes(pieceNumber)
         return (
           <group
             key={index}
             ref={(node) => { groups.current[index] = node }}
           >
-            <mesh geometry={geometries[index % 2]} castShadow receiveShadow>
+            <mesh
+              geometry={geometries[index % 2]}
+              castShadow
+              receiveShadow
+              onClick={(event) => { event.stopPropagation(); onSelectPiece?.(pieceNumber) }}
+              onPointerOver={(event) => { event.stopPropagation(); document.body.style.cursor = onSelectPiece ? 'pointer' : '' }}
+              onPointerOut={() => { document.body.style.cursor = '' }}
+            >
               <meshPhysicalMaterial
+                ref={(material) => { materials.current[index] = material }}
                 color={color}
                 roughness={0.58}
                 metalness={0}
@@ -159,6 +242,8 @@ function SnakeModel({ pieceCount, steps, currentStep, animationDuration }: Omit<
                 clearcoat={0.04}
                 clearcoatRoughness={0.72}
                 ior={1.46}
+                emissive={colliding ? '#a8160b' : '#000000'}
+                emissiveIntensity={colliding ? 0.65 : 0}
               />
             </mesh>
             {joint && (
@@ -168,8 +253,14 @@ function SnakeModel({ pieceCount, steps, currentStep, animationDuration }: Omit<
                 quaternion={joint.quaternion}
                 renderOrder={-1}
                 receiveShadow
+                onClick={(event) => { event.stopPropagation(); onSelectPiece?.(pieceNumber) }}
               >
-                <meshStandardMaterial color="#263039" roughness={0.72} metalness={0} side={DoubleSide} />
+                <meshStandardMaterial
+                  color="#263039"
+                  roughness={0.72}
+                  metalness={0}
+                  side={DoubleSide}
+                />
               </mesh>
             )}
           </group>
@@ -179,32 +270,46 @@ function SnakeModel({ pieceCount, steps, currentStep, animationDuration }: Omit<
   )
 }
 
-function CameraRig({ resetSignal, pieceCount }: { resetSignal: number; pieceCount: number }) {
+function CameraRig({ resetSignal, pieceCount, focusTarget }: { resetSignal: number; pieceCount: number; focusTarget: MutableRefObject<Vector3> }) {
   const controls = useRef<any>(null)
+  const appliedFocus = useRef(new Vector3(Number.NaN, Number.NaN, Number.NaN))
   const { camera } = useThree()
+  useEffect(() => {
+    if (controls.current) controls.current.mouseButtons.right = CameraControlsImpl.ACTION.OFFSET
+  }, [])
   useEffect(() => {
     const straightSpan = pieceCount * Math.SQRT2 / 2
     const distance = Math.max(14, straightSpan * 1.6)
-    camera.position.set(distance * 0.16, distance * 0.42, distance)
-    camera.lookAt(0, 0, 0)
-    camera.updateProjectionMatrix()
-    if (controls.current) {
-      controls.current.target.set(0, 0, 0)
-      controls.current.update()
-    }
-  }, [camera, resetSignal, pieceCount])
-  return <OrbitControls ref={controls} makeDefault enableDamping minDistance={2} maxDistance={200} />
+    const target = focusTarget.current
+    const position = new Vector3(target.x + distance * 0.16, target.y + distance * 0.42, target.z + distance)
+    controls.current?.setLookAt(position.x, position.y, position.z, target.x, target.y, target.z, false)
+    controls.current?.setFocalOffset(0, 0, 0, false)
+    appliedFocus.current.copy(target)
+  }, [camera, resetSignal, pieceCount, focusTarget])
+  useFrame(() => {
+    const controlsInstance = controls.current
+    if (!controlsInstance || appliedFocus.current.distanceToSquared(focusTarget.current) < 0.000001) return
+    const target = focusTarget.current
+    // CameraControls keeps the current camera transform and uses a focal offset,
+    // so an off-centre block can become the real orbit pivot without jumping to
+    // the middle of the screen. User trucking/panning remains untouched.
+    controlsInstance.setOrbitPoint(target.x, target.y, target.z)
+    appliedFocus.current.copy(target)
+  })
+  return <CameraControls ref={controls} makeDefault minDistance={2} maxDistance={200} smoothTime={0.18} />
 }
 
 export function SnakeScene(props: SnakeSceneProps) {
   const shadowExtent = Math.max(14, props.pieceCount * 0.56)
+  const focusTarget = useRef(new Vector3())
   return (
     <Canvas
       shadows="soft"
       frameloop="demand"
       dpr={[1, 2]}
       camera={{ position: [5, 6, 9], fov: 38 }}
-      gl={{ antialias: true, toneMapping: ACESFilmicToneMapping, outputColorSpace: SRGBColorSpace }}
+      gl={{ antialias: true, preserveDrawingBuffer: true, toneMapping: ACESFilmicToneMapping, outputColorSpace: SRGBColorSpace }}
+      onPointerMissed={() => props.onSelectPiece?.(undefined)}
     >
       <color attach="background" args={['#e9eeeb']} />
       <hemisphereLight args={['#f8fbff', '#aab3ad', 0.72]} />
@@ -229,7 +334,7 @@ export function SnakeScene(props: SnakeSceneProps) {
         <Lightformer form="rect" intensity={2.2} color="#d9e8ff" position={[-7, 3, -4]} scale={[5, 5, 1]} target={[0, 1, 0]} />
         <Lightformer form="rect" intensity={1.5} color="#ffffff" position={[8, -1, -2]} scale={[3, 3, 1]} target={[0, 0, 0]} />
       </Environment>
-      <SnakeModel {...props} />
+      <SnakeModel {...props} focusTarget={focusTarget} />
       <ContactShadows
         position={[0, -0.14, 0]}
         opacity={0.3}
@@ -239,7 +344,7 @@ export function SnakeScene(props: SnakeSceneProps) {
         resolution={256}
         color="#52605a"
       />
-      <CameraRig resetSignal={props.resetSignal} pieceCount={props.pieceCount} />
+      <CameraRig resetSignal={props.resetSignal} pieceCount={props.pieceCount} focusTarget={focusTarget} />
     </Canvas>
   )
 }

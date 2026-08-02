@@ -12,6 +12,11 @@ describe('parseFormula', () => {
     expect(parseFormula('24(1), 2(3)', 24).errors).toHaveLength(2)
   })
 
+  it('adapts common segment superscript notation to joint notation', () => {
+    expect(parseFormula('2¹ 4² 10⁻¹ 24¹', 24).steps.map(({ joint, turn }) => [joint, turn]))
+      .toEqual([[1, 1], [3, 2], [9, -1], [23, 1]])
+  })
+
   it('accumulates repeated joint turns at a selected step', () => {
     const steps = parseFormula('1(1), 2(-1), 1(1)', 24).steps
     expect(turnsAtStep(steps, 2, 24).slice(0, 2)).toEqual([1, -1])

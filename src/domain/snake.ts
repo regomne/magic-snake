@@ -41,9 +41,11 @@ export function calculateTransforms(pieceCount: number, turns: number[]): PieceT
       ? new Vector3(rootTwo / 2, rootTwo / 2, 0)
       : new Vector3(rootTwo / 2, -rootTwo / 2, 0)
     const axis = localAxis.transformDirection(previousMatrix).normalize()
-    // Axis points from the supporting piece into the attached piece. Viewed back
-    // toward the supporting rectangular face, positive right-hand rotation is clockwise.
-    const rotate = new Matrix4().makeRotationAxis(axis, quarterTurns * Math.PI / 2)
+    // The formula direction is defined while looking from the moving piece back
+    // at its supporting joint face. That viewing direction is opposite to the
+    // positive axis used by Matrix4's right-hand rule, so clockwise turns need a
+    // negative mathematical angle.
+    const rotate = new Matrix4().makeRotationAxis(axis, -quarterTurns * Math.PI / 2)
     const aroundPivot = new Matrix4().makeTranslation(pivot.x, pivot.y, pivot.z)
       .multiply(rotate)
       .multiply(new Matrix4().makeTranslation(-pivot.x, -pivot.y, -pivot.z))

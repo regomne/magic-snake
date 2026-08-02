@@ -12,21 +12,30 @@ export interface ParseResult {
 }
 
 const ITEM = /^(\d+)\s*\(\s*(-?\d+)\s*\)$/
+const POWER_ITEM = /^(\d+)\s*\^?\s*([⁻¹²³0-9-]+)$/
+
+function normalizePower(value: string) {
+  return value.replaceAll('⁻', '-').replaceAll('¹', '1').replaceAll('²', '2').replaceAll('³', '3')
+}
 
 export function parseFormula(input: string, pieceCount: number): ParseResult {
-  const chunks = input.split(/[,，;；\n]+/).map((item) => item.trim()).filter(Boolean)
+  const primaryNotation = input.includes('(')
+  const chunks = input.split(primaryNotation ? /[,，;；\n]+/ : /[,，;；\s]+/).map((item) => item.trim()).filter(Boolean)
   const steps: FormulaStep[] = []
   const errors: string[] = []
 
   chunks.forEach((source, index) => {
     const match = source.match(ITEM)
-    if (!match) {
+    const powerMatch = primaryNotation ? null : source.match(POWER_ITEM)
+    if (!match && !powerMatch) {
       errors.push(`第 ${index + 1} 项“${source}”格式不正确，应写成 3(-1)`)
       return
     }
 
-    const joint = Number(match[1])
-    const turn = Number(match[2])
+    // In superscript notation nᵗ describes segment n relative to segment n-1,
+    // while the workbench names that same connection joint n-1.
+    const joint = powerMatch ? Number(powerMatch[1]) - 1 : Number(match![1])
+    const turn = Number(powerMatch ? normalizePower(powerMatch[2]) : match![2])
     if (joint < 1 || joint >= pieceCount) {
       errors.push(`关节 ${joint} 超出范围（当前可用 1–${pieceCount - 1}）`)
       return
