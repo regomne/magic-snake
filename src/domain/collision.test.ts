@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analyzeCollisions, calculateLatticePieces, calculateSnappedTransforms, complementaryType, detectCollisions } from './collision'
+import { analyzeCollisions, appendTurn, calculateLatticePieces, calculateSnappedTransforms, complementaryType, detectCollisions } from './collision'
 import { parseFormula } from './formula'
 import { calculateTransforms } from './snake'
 
@@ -49,5 +49,18 @@ describe('collision detection', () => {
         expect(Math.abs(piece.quaternion.dot(floating[index].quaternion))).toBeCloseTo(1, 9)
       })
     }
+  })
+
+  it('merges consecutive turns of the same piece and removes full rotations', () => {
+    const once = appendTurn([], 4, 1)
+    expect(appendTurn(once, 4, 1).map(({ joint, turn }) => [joint, turn])).toEqual([[4, 2]])
+    expect(appendTurn(once, 4, -1)).toEqual([])
+    expect(appendTurn(appendTurn([], 4, 2), 4, 1).map(({ turn }) => turn)).toEqual([-1])
+    expect(appendTurn(appendTurn([], 4, -1), 4, -1).map(({ turn }) => turn)).toEqual([2])
+  })
+
+  it('does not merge turns separated by another piece', () => {
+    const steps = appendTurn(appendTurn(appendTurn([], 2, 1), 3, 1), 2, 1)
+    expect(steps.map(({ joint, turn }) => [joint, turn])).toEqual([[2, 1], [3, 1], [2, 1]])
   })
 })

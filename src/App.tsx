@@ -1,11 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Camera,
   ChevronLeft,
   ChevronRight,
   CircleHelp,
-  Download,
-  FileText,
   Pause,
   Play,
   Redo2,
@@ -16,7 +13,6 @@ import {
   SkipBack,
   SkipForward,
   Undo2,
-  Upload,
 } from 'lucide-react'
 import { SnakeScene } from './components/SnakeScene'
 import { analyzeCollisions, appendTurn } from './domain/collision'
@@ -57,14 +53,6 @@ function loadSavedShapes(): SavedShape[] {
   } catch { return [] }
 }
 
-function download(name: string, content: BlobPart, type: string) {
-  const link = document.createElement('a')
-  link.href = URL.createObjectURL(new Blob([content], { type }))
-  link.download = name
-  link.click()
-  URL.revokeObjectURL(link.href)
-}
-
 function App() {
   const [initial] = useState(loadInitialState)
   const [pieceCount, setPieceCount] = useState<number>(initial.pieceCount)
@@ -88,7 +76,6 @@ function App() {
   const [preventCollision, setPreventCollision] = useState(true)
   const [notice, setNotice] = useState('')
   const [savedShapes, setSavedShapes] = useState<SavedShape[]>(loadSavedShapes)
-  const importRef = useRef<HTMLInputElement>(null)
   const textStart = useRef(formula)
   const stepRefs = useRef<Array<HTMLButtonElement | null>>([])
   const resumePlaybackAfterView = useRef(false)
@@ -262,32 +249,6 @@ function App() {
     setNotice('造型已保存到本机')
   }
 
-  function exportJson() {
-    download('magic-snake.json', JSON.stringify({ version: 2, pieceCount, formula, exportedAt: new Date().toISOString() }, null, 2), 'application/json')
-  }
-
-  function exportPng() {
-    const canvas = document.querySelector<HTMLCanvasElement>('.viewer-panel canvas')
-    if (!canvas) return
-    const link = document.createElement('a')
-    link.download = 'magic-snake.png'
-    link.href = canvas.toDataURL('image/png')
-    link.click()
-  }
-
-  function exportGuide() {
-    const lines = [
-      `魔尺分步教学（${pieceCount} 段）`,
-      '',
-      `公式：${formula || '直尺'}`,
-      '',
-      ...steps.map((step, index) => `${index + 1}. 关节 ${step.joint}：${step.turn === 1 ? '顺时针旋转 90°' : step.turn === -1 ? '逆时针旋转 90°' : '旋转 180°'}`),
-      '',
-      collisionIssues.length ? `可行性警告：${collisionIssues.length} 项碰撞` : '可行性检查：通过',
-    ]
-    download('magic-snake-guide.txt', lines.join('\n'), 'text/plain;charset=utf-8')
-  }
-
   function openSavedShape(shape: SavedShape) {
     const nextParsed = parseFormula(shape.formula, shape.pieceCount)
     setUndoStack((stack) => [...stack, formula])
@@ -297,29 +258,6 @@ function App() {
     if (nextParsed.notation) setFormulaNotation(nextParsed.notation)
     setCurrentStep(nextParsed.steps.length)
     setPlaying(false)
-  }
-
-  async function importFile(file?: File) {
-    if (!file) return
-    try {
-      const text = await file.text()
-      let nextFormula = text.trim(); let nextLength = pieceCount
-      if (file.name.endsWith('.json')) {
-        const data = JSON.parse(text)
-        nextFormula = data.formula
-        nextLength = Number(data.pieceCount)
-      }
-      if (!LENGTHS.includes(nextLength as typeof LENGTHS[number]) || typeof nextFormula !== 'string') throw new Error()
-      setPieceCount(nextLength)
-      setUndoStack((stack) => [...stack, formula])
-      setRedoStack([])
-      setFormula(nextFormula)
-      const nextParsed = parseFormula(nextFormula, nextLength)
-      if (nextParsed.notation) setFormulaNotation(nextParsed.notation)
-      setCurrentStep(nextParsed.steps.length)
-      setNotice('文件已导入')
-    } catch { setNotice('无法识别这个文件') }
-    if (importRef.current) importRef.current.value = ''
   }
 
   useEffect(() => {
@@ -361,20 +299,6 @@ function App() {
             </select>
           </div>
 
-          <section className="joint-editor" aria-label="关节编辑">
-            <div className="joint-editor-title"><span>{selectedPiece === undefined ? '点击模型选择方块' : `方块 ${selectedPiece} 的上一关节`}</span><b>{selectedJoint ?? '—'}</b></div>
-            <input aria-label="选择关节" type="range" min={1} max={pieceCount - 1} value={selectedJoint ?? 1} onChange={(event) => setSelectedPiece(Number(event.target.value) + 1)} />
-            <div className="joint-actions">
-              <button disabled={selectedJoint === undefined} onClick={() => rotateSelected(-1)} title="快捷键 -"><RotateCcw size={17} />逆时针</button>
-              <button disabled={selectedJoint === undefined} onClick={() => rotateSelected(2)} title="快捷键 2">180°</button>
-              <button disabled={selectedJoint === undefined} onClick={() => rotateSelected(1)} title="快捷键 1"><RotateCw size={17} />顺时针</button>
-            </div>
-            <div className="edit-options">
-              <label><input type="checkbox" checked={preventCollision} onChange={(event) => setPreventCollision(event.target.checked)} /> 阻止最终位置重叠</label>
-              <button onClick={() => commitFormula('')}>一键拉直</button>
-            </div>
-          </section>
-
           <div className="formula-heading">
             <label className="formula-label" htmlFor="formula">公式（模型操作会自动同步）</label>
             <select aria-label="公式格式" value={formulaNotation} onChange={(event) => changeFormulaNotation(event.target.value as FormulaNotation)}>
@@ -402,13 +326,19 @@ function App() {
           {parsed.errors.length > 0 && <div className="error-box">{parsed.errors.map((error) => <p key={error}>{error}</p>)}</div>}
           {collisionIssues.length > 0 && <div className="collision-box"><b>最终姿态检查：发现 {collisionIssues.length} 项</b><p>{collisionIssues.slice(0, 3).map((issue) => `步骤 ${issue.step}：方块 ${issue.pieces.join(' / ')} 占据重叠空间`).join('；')}</p></div>}
 
-          <div className="file-actions">
-            <button onClick={() => importRef.current?.click()}><Upload size={15} />导入</button>
-            <button onClick={exportJson}><Download size={15} />JSON</button>
-            <button onClick={exportPng}><Camera size={15} />PNG</button>
-            <button onClick={exportGuide}><FileText size={15} />教学</button>
-            <input ref={importRef} hidden type="file" accept=".json,.txt,text/plain,application/json" onChange={(event) => importFile(event.target.files?.[0])} />
-          </div>
+          <section className="joint-editor" aria-label="关节编辑">
+            <div className="joint-editor-title"><span>{selectedPiece === undefined ? '点击模型选择方块' : `方块 ${selectedPiece} 的上一关节`}</span><b>{selectedJoint ?? '—'}</b></div>
+            <input aria-label="选择关节" type="range" min={1} max={pieceCount - 1} value={selectedJoint ?? 1} onChange={(event) => setSelectedPiece(Number(event.target.value) + 1)} />
+            <div className="joint-actions">
+              <button disabled={selectedJoint === undefined} onClick={() => rotateSelected(-1)} title="快捷键 -"><RotateCcw size={17} />逆时针</button>
+              <button disabled={selectedJoint === undefined} onClick={() => rotateSelected(2)} title="快捷键 2">180°</button>
+              <button disabled={selectedJoint === undefined} onClick={() => rotateSelected(1)} title="快捷键 1"><RotateCw size={17} />顺时针</button>
+            </div>
+            <div className="edit-options">
+              <label><input type="checkbox" checked={preventCollision} onChange={(event) => setPreventCollision(event.target.checked)} /> 阻止最终位置重叠</label>
+              <button onClick={() => commitFormula('')}>一键拉直</button>
+            </div>
+          </section>
           {savedShapes.length > 0 && <select className="saved-shapes" defaultValue="" onChange={(event) => { const shape = savedShapes.find((item) => item.id === event.target.value); if (shape) openSavedShape(shape); event.target.value = '' }}><option value="" disabled>打开已保存造型…</option>{savedShapes.map((shape) => <option key={shape.id} value={shape.id}>{shape.name} · {shape.pieceCount} 段</option>)}</select>}
 
         </aside>
@@ -442,7 +372,7 @@ function App() {
         </section>
 
         <aside className="teaching-panel">
-          <div className="teaching-heading"><div><span className="eyebrow">TUTORIAL</span><h2>教学步骤</h2></div><b>{steps.length} 步</b></div>
+          <div className="teaching-heading"><div><span className="eyebrow">STEPS</span><h2>步骤</h2></div><b>{steps.length} 步</b></div>
           <button className={currentStep === 0 ? 'initial-step active' : 'initial-step'} onClick={() => goToStep(0)}>初始直尺状态</button>
           <div className="step-list">{steps.map((step, index) => (
             <button
@@ -470,7 +400,7 @@ function App() {
       </footer>
 
       {notice && <div className="toast" role="status">{notice}</div>}
-      {showHelp && <div className="modal-backdrop" onMouseDown={() => setShowHelp(false)}><article className="help-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setShowHelp(false)}>×</button><span className="eyebrow">WORKBENCH</span><h2>直接设计魔尺</h2><p>点击任意方块选择它的上一个关节，再使用旋转按钮。模型、公式和右侧教学步骤会自动同步。</p><div className="help-code">1：顺时针 −：逆时针 2：180°</div><ul><li><b>Ctrl/⌘ Z</b> 撤销，<b>Ctrl/⌘ Shift Z</b> 重做</li><li>整数晶格检查每一步完成后的最终空间占位</li><li>公式编号代表方块；方块 1 没有前置关节，会被忽略</li></ul><p>工作内容会自动保存在浏览器中，也可以导出 JSON 或通过 URL 分享。</p></article></div>}
+      {showHelp && <div className="modal-backdrop" onMouseDown={() => setShowHelp(false)}><article className="help-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setShowHelp(false)}>×</button><span className="eyebrow">WORKBENCH</span><h2>直接设计魔尺</h2><p>点击任意方块选择它的上一个关节，再使用旋转按钮。模型、公式和右侧步骤会自动同步。</p><div className="help-code">1：顺时针 −：逆时针 2：180°</div><ul><li><b>Ctrl/⌘ Z</b> 撤销，<b>Ctrl/⌘ Shift Z</b> 重做</li><li>整数晶格检查每一步完成后的最终空间占位</li><li>公式编号代表方块；方块 1 没有前置关节，会被忽略</li></ul><p>工作内容会自动保存在浏览器中，也可以通过 URL 分享。</p></article></div>}
     </main>
   )
 }

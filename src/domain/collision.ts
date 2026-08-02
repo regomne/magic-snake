@@ -201,5 +201,16 @@ export function analyzeCollisions(steps: FormulaStep[], pieceCount: number): Col
 }
 
 export function appendTurn(steps: FormulaStep[], joint: number, turn: Turn) {
-  return [...steps, { joint, turn, source: `${joint}(${turn})` }]
+  const previous = steps.at(-1)
+  if (!previous || previous.joint !== joint) {
+    return [...steps, { joint, turn, source: `${joint + 1}(${turn})` }]
+  }
+
+  const quarterTurns = ((previous.turn + turn) % 4 + 4) % 4
+  if (quarterTurns === 0) return steps.slice(0, -1)
+  const mergedTurn: Turn = quarterTurns === 1 ? 1 : quarterTurns === 2 ? 2 : -1
+  return [
+    ...steps.slice(0, -1),
+    { joint, turn: mergedTurn, source: `${joint + 1}(${mergedTurn})` },
+  ]
 }

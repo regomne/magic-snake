@@ -35,8 +35,8 @@ select { border: 1px solid #ccd5d0; border-radius: 7px; background: #fff; paddin
 .joint-editor-title b { font: 600 17px 'DM Mono', monospace; color: #245ba6; }
 .joint-editor > input[type='range'] { width: 100%; margin: 9px 0 11px; accent-color: #285ca8; }
 .joint-actions { display: grid; grid-template-columns: 1fr .7fr 1fr; gap: 6px; }
-.joint-actions button, .file-actions button { border: 1px solid #c8d4e2; background: #fff; border-radius: 7px; min-height: 34px; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 10px; }
-.joint-actions button:hover, .file-actions button:hover { border-color: #285ca8; color: #174b94; }
+.joint-actions button { border: 1px solid #c8d4e2; background: #fff; border-radius: 7px; min-height: 34px; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 10px; }
+.joint-actions button:hover { border-color: #285ca8; color: #174b94; }
 .edit-options { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 10px; color: #586860; }
 .edit-options label { display: flex; align-items: center; gap: 5px; }
 .edit-options input { accent-color: #285ca8; }
@@ -52,7 +52,6 @@ textarea.formula-error { border-color: #d14832; background: #fff8f5; box-shadow:
 .error-box p { margin: 3px 0; }
 .collision-box { border-left: 3px solid #d47a28; background: #fff6e9; color: #814619; padding: 8px 10px; margin: 0 0 12px; font-size: 10px; border-radius: 2px 6px 6px 2px; }
 .collision-box p { margin: 4px 0 0; line-height: 1.5; }
-.file-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 0 0 9px; }
 .saved-shapes { width: 100%; margin-bottom: 10px; font-size: 10px; }
 .step-list-heading { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; padding: 13px 1px 10px; border-top: 1px solid #e1e6e3; }
 .step-list-heading b { color: #87918c; font-weight: 500; }

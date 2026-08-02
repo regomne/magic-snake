@@ -595,7 +595,7 @@ export function SnakeScene(props: SnakeSceneProps) {
       frameloop="demand"
       dpr={[1, 2]}
       camera={{ position: [5, 6, 9], fov: 38 }}
-      gl={{ antialias: true, preserveDrawingBuffer: true, toneMapping: ACESFilmicToneMapping, outputColorSpace: SRGBColorSpace }}
+      gl={{ antialias: true, toneMapping: ACESFilmicToneMapping, outputColorSpace: SRGBColorSpace }}
       onPointerDownCapture={(event) => {
         if (event.button === 0) leftPointerStart.current = { x: event.clientX, y: event.clientY }
       }}
