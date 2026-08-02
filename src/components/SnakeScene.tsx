@@ -1,4 +1,4 @@
-import { CameraControls, CameraControlsImpl, ContactShadows, Environment, Lightformer } from '@react-three/drei'
+import { CameraControls, CameraControlsImpl, ContactShadows, Edges, Environment, Lightformer } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import type { MutableRefObject } from 'react'
@@ -10,7 +10,7 @@ import {
   ExtrudeGeometry,
   Group,
   Matrix4,
-  MeshPhysicalMaterial,
+  MeshStandardMaterial,
   PlaneGeometry,
   PerspectiveCamera,
   Quaternion,
@@ -118,8 +118,7 @@ function SnakeModel({
   foldedPieceCount: number
 }) {
   const groups = useRef<Array<Group | null>>([])
-  const materials = useRef<Array<MeshPhysicalMaterial | null>>([])
-  const blinkTimer = useRef<number | undefined>(undefined)
+  const materials = useRef<Array<MeshStandardMaterial | null>>([])
   const invalidate = useThree((state) => state.invalidate)
   const geometries = useMemo(() => [createPrismGeometry(false), createPrismGeometry(true)], [])
   const seamGeometry = useMemo(() => new PlaneGeometry(PIECE_SIZE * 0.965, PIECE_SIZE * 0.965), [])
@@ -185,7 +184,6 @@ function SnakeModel({
   useEffect(() => () => {
     geometries.forEach((geometry) => geometry.dispose())
     seamGeometry.dispose()
-    if (blinkTimer.current !== undefined) window.clearTimeout(blinkTimer.current)
   }, [geometries, seamGeometry])
   // Initialize newly mounted blocks before paint. Step changes deliberately do
   // not run this effect: useFrame is the only path from the old pose to the new.
@@ -214,7 +212,7 @@ function SnakeModel({
   // the animation explicitly asks for more frames only until every joint settles.
   useEffect(() => invalidate(), [targetTurns, selectedPiece, animationPaused, invalidate])
 
-  useFrame(({ clock }, rawDelta) => {
+  useFrame((_, rawDelta) => {
     // With frameloop="demand", the first frame after a long idle can report the
     // whole idle interval as delta. Cap it so a new joint turn cannot snap to
     // its target in that single frame.
@@ -247,28 +245,20 @@ function SnakeModel({
         material.emissive.set('#a8160b')
         material.emissiveIntensity = 0.65
       } else if (selectedPiece === pieceNumber) {
-        material.emissive.set('#d66a24')
-        material.emissiveIntensity = 0.1 + (Math.sin(clock.elapsedTime * 2.4) + 1) * 0.1
+        material.emissive.set('#000000')
+        material.emissiveIntensity = 0
       } else {
         material.emissive.set('#000000')
         material.emissiveIntensity = 0
       }
     })
     if (isAnimating && !animationPaused) invalidate()
-    else if (selectedPiece !== undefined && blinkTimer.current === undefined) {
-      // A slow highlight does not need a 60 fps render loop. Updating at 20 fps
-      // keeps the pulse smooth while preserving the low idle cost of the scene.
-      blinkTimer.current = window.setTimeout(() => {
-        blinkTimer.current = undefined
-        invalidate()
-      }, 50)
-    }
   })
 
   return (
     <group rotation={[-0.18, 0.18, 0]}>
       {initialTransforms.map((_, index) => {
-        const color = index % 2 === 0 ? '#1d5da7' : '#f1efe8'
+        const color = index % 2 === 0 ? '#286fbd' : '#fffdf8'
         const joint = jointFrames[index]
         const pieceNumber = index + 1
         const colliding = collisionPieces.includes(pieceNumber)
@@ -281,23 +271,45 @@ function SnakeModel({
               geometry={geometries[index % 2]}
               castShadow
               receiveShadow
-              onClick={(event) => { event.stopPropagation(); onSelectPiece?.(pieceNumber) }}
+              onClick={(event) => {
+                event.stopPropagation()
+                if (event.button === 0 && event.delta <= 3) onSelectPiece?.(pieceNumber)
+              }}
               onPointerOver={(event) => { event.stopPropagation(); document.body.style.cursor = onSelectPiece ? 'pointer' : '' }}
               onPointerOut={() => { document.body.style.cursor = '' }}
             >
-              <meshPhysicalMaterial
+              <meshStandardMaterial
                 ref={(material) => { materials.current[index] = material }}
                 color={color}
-                roughness={0.58}
+                roughness={0.9}
                 metalness={0}
-                envMapIntensity={0.48}
-                clearcoat={0.04}
-                clearcoatRoughness={0.72}
-                ior={1.46}
+                envMapIntensity={0.3}
                 emissive={colliding ? '#a8160b' : '#000000'}
                 emissiveIntensity={colliding ? 0.65 : 0}
               />
             </mesh>
+            {selectedPiece === pieceNumber && (
+              <>
+                <Edges
+                  geometry={geometries[index % 2]}
+                  scale={1.026}
+                  threshold={12}
+                  color="#16232c"
+                  lineWidth={4}
+                  toneMapped={false}
+                  raycast={() => null}
+                />
+                <Edges
+                  geometry={geometries[index % 2]}
+                  scale={1.032}
+                  threshold={12}
+                  color="#ffffff"
+                  lineWidth={1.5}
+                  toneMapped={false}
+                  raycast={() => null}
+                />
+              </>
+            )}
             {joint && (
               <mesh
                 geometry={seamGeometry}
@@ -305,7 +317,10 @@ function SnakeModel({
                 quaternion={joint.quaternion}
                 renderOrder={-1}
                 receiveShadow
-                onClick={(event) => { event.stopPropagation(); onSelectPiece?.(pieceNumber) }}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  if (event.button === 0 && event.delta <= 3) onSelectPiece?.(pieceNumber)
+                }}
               >
                 <meshStandardMaterial
                   color="#263039"
@@ -570,6 +585,7 @@ export function SnakeScene(props: SnakeSceneProps) {
   const shadowExtent = Math.max(14, props.pieceCount * 0.56)
   const focusTarget = useRef(new Vector3())
   const foldedBounds = useRef(new Box3())
+  const leftPointerStart = useRef<{ x: number; y: number } | undefined>(undefined)
   const foldedPieceCount = props.currentStep > 0
     ? Math.max(...props.steps.slice(0, props.currentStep).map((step) => step.joint)) + 1
     : 1
@@ -580,14 +596,21 @@ export function SnakeScene(props: SnakeSceneProps) {
       dpr={[1, 2]}
       camera={{ position: [5, 6, 9], fov: 38 }}
       gl={{ antialias: true, preserveDrawingBuffer: true, toneMapping: ACESFilmicToneMapping, outputColorSpace: SRGBColorSpace }}
-      onPointerMissed={() => props.onSelectPiece?.(undefined)}
+      onPointerDownCapture={(event) => {
+        if (event.button === 0) leftPointerStart.current = { x: event.clientX, y: event.clientY }
+      }}
+      onPointerMissed={(event) => {
+        const start = leftPointerStart.current
+        const distance = start ? Math.hypot(event.clientX - start.x, event.clientY - start.y) : Number.POSITIVE_INFINITY
+        if (event.button === 0 && distance <= 3) props.onSelectPiece?.(undefined)
+      }}
     >
-      <color attach="background" args={['#e9eeeb']} />
-      <hemisphereLight args={['#f8fbff', '#aab3ad', 0.72]} />
+      <color attach="background" args={['#edf2ef']} />
+      <hemisphereLight args={['#ffffff', '#c7d4cd', 1.18]} />
       <directionalLight
         position={[9, 14, 11]}
-        intensity={2.15}
-        color="#fff8ec"
+        intensity={1.75}
+        color="#fffaf1"
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-shadowExtent}
@@ -599,10 +622,11 @@ export function SnakeScene(props: SnakeSceneProps) {
         shadow-bias={-0.00025}
         shadow-normalBias={0.025}
       />
-      <directionalLight position={[-8, 7, -10]} intensity={0.48} color="#cbdcff" />
-      <Environment resolution={128} environmentIntensity={0.62}>
-        <Lightformer form="rect" intensity={4.2} color="#fff8ed" position={[0, 8, 9]} scale={[8, 4, 1]} target={[0, 1, 0]} />
-        <Lightformer form="rect" intensity={2.2} color="#d9e8ff" position={[-7, 3, -4]} scale={[5, 5, 1]} target={[0, 1, 0]} />
+      <directionalLight position={[-8, 7, -10]} intensity={0.95} color="#e4edff" />
+      <directionalLight position={[2, -4, 8]} intensity={0.42} color="#ffffff" />
+      <Environment resolution={128} environmentIntensity={0.42}>
+        <Lightformer form="rect" intensity={3.5} color="#fff8ed" position={[0, 8, 9]} scale={[8, 4, 1]} target={[0, 1, 0]} />
+        <Lightformer form="rect" intensity={3} color="#e5efff" position={[-7, 3, -4]} scale={[5, 5, 1]} target={[0, 1, 0]} />
         <Lightformer form="rect" intensity={1.5} color="#ffffff" position={[8, -1, -2]} scale={[3, 3, 1]} target={[0, 0, 0]} />
       </Environment>
       <SnakeModel
