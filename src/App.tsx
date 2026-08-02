@@ -70,6 +70,7 @@ function App() {
   const [notice, setNotice] = useState('')
   const textStart = useRef(formula)
   const stepRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const stepListRef = useRef<HTMLDivElement | null>(null)
   const resumePlaybackAfterView = useRef(false)
   const scheduledPlaybackDueAt = useRef(0)
   const pausedPlaybackDueAt = useRef(0)
@@ -123,7 +124,17 @@ function App() {
   }, [playing, currentStep, steps, animationDuration, pauseMs])
 
   useEffect(() => {
-    if (currentStep > 0) stepRefs.current[currentStep - 1]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    if (currentStep <= 0) return
+    const list = stepListRef.current
+    const item = stepRefs.current[currentStep - 1]
+    if (!list || !item) return
+    const listRect = list.getBoundingClientRect()
+    const itemRect = item.getBoundingClientRect()
+    if (itemRect.top < listRect.top) {
+      list.scrollTo({ top: list.scrollTop + itemRect.top - listRect.top - 8, behavior: 'smooth' })
+    } else if (itemRect.bottom > listRect.bottom) {
+      list.scrollTo({ top: list.scrollTop + itemRect.bottom - listRect.bottom + 8, behavior: 'smooth' })
+    }
   }, [currentStep])
 
   function goToStep(step: number) {
@@ -395,7 +406,7 @@ function App() {
         <aside className="teaching-panel">
           <div className="teaching-heading"><div><span className="eyebrow">STEPS</span><h2>{en ? 'Steps' : '步骤'}</h2></div><b>{steps.length} {en ? 'steps' : '步'}</b></div>
           <button className={currentStep === 0 ? 'initial-step active' : 'initial-step'} onClick={() => goToStep(0)}>{en ? 'Initial straight state' : '初始直尺状态'}</button>
-          <div className="step-list">{steps.map((step, index) => (
+          <div className="step-list" ref={stepListRef}>{steps.map((step, index) => (
             <button
               ref={(node) => { stepRefs.current[index] = node }}
               key={`${step.source}-${index}`}
