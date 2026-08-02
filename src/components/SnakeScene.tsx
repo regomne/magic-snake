@@ -12,8 +12,10 @@ import {
   Matrix4,
   MeshPhysicalMaterial,
   PlaneGeometry,
+  PerspectiveCamera,
   Quaternion,
   Shape,
+  Sphere,
   SRGBColorSpace,
   Vector3,
 } from 'three'
@@ -28,6 +30,12 @@ interface SnakeSceneProps {
   animationDuration: number
   resetSignal: number
   animationPaused?: boolean
+  autoPlaying?: boolean
+  viewportFitSignal?: number
+  viewportFitActive?: boolean
+  viewportLocked?: boolean
+  onViewportFitComplete?: () => void
+  onBlockedZoom?: () => void
   selectedPiece?: number
   collisionPieces?: number[]
   onSelectPiece?: (piece?: number) => void
@@ -102,7 +110,13 @@ function SnakeModel({
   collisionPieces = [],
   onSelectPiece,
   focusTarget,
-}: Omit<SnakeSceneProps, 'resetSignal' | 'onViewControlStart' | 'onViewControlEnd'> & { focusTarget: MutableRefObject<Vector3> }) {
+  foldedBounds,
+  foldedPieceCount,
+}: Omit<SnakeSceneProps, 'resetSignal' | 'autoPlaying' | 'viewportFitSignal' | 'viewportFitActive' | 'viewportLocked' | 'onViewportFitComplete' | 'onBlockedZoom' | 'onViewControlStart' | 'onViewControlEnd'> & {
+  focusTarget: MutableRefObject<Vector3>
+  foldedBounds: MutableRefObject<Box3>
+  foldedPieceCount: number
+}) {
   const groups = useRef<Array<Group | null>>([])
   const materials = useRef<Array<MeshPhysicalMaterial | null>>([])
   const blinkTimer = useRef<number | undefined>(undefined)
@@ -117,6 +131,10 @@ function SnakeModel({
     // A length change remounts/reinitializes the chain; step changes animate below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [pieceCount],
+  )
+  const targetFitTransforms = useMemo(
+    () => calculateSnappedTransforms(pieceCount, targetTurns),
+    [pieceCount, targetTurns],
   )
 
   function updateFocusTarget(transforms: ReturnType<typeof calculateTransforms>) {
@@ -133,7 +151,28 @@ function SnakeModel({
       for (const x of [localBounds.min.x, localBounds.max.x]) {
         for (const y of [localBounds.min.y, localBounds.max.y]) {
           for (const z of [localBounds.min.z, localBounds.max.z]) {
-            bounds.expandByPoint(new Vector3(x, y, z)
+            const worldPoint = new Vector3(x, y, z)
+              .applyQuaternion(transform.quaternion)
+              .add(transform.position)
+              .applyQuaternion(rootRotation)
+            bounds.expandByPoint(worldPoint)
+          }
+        }
+      }
+    })
+    if (selectedPiece === undefined && !bounds.isEmpty()) bounds.getCenter(focusTarget.current)
+  }
+
+  function updateFoldedBounds(transforms: ReturnType<typeof calculateTransforms>) {
+    const rootRotation = new Quaternion().setFromEuler(new Euler(-0.18, 0.18, 0))
+    foldedBounds.current.makeEmpty()
+    transforms.slice(0, foldedPieceCount).forEach((transform, index) => {
+      const localBounds = geometries[index % 2].boundingBox
+      if (!localBounds) return
+      for (const x of [localBounds.min.x, localBounds.max.x]) {
+        for (const y of [localBounds.min.y, localBounds.max.y]) {
+          for (const z of [localBounds.min.z, localBounds.max.z]) {
+            foldedBounds.current.expandByPoint(new Vector3(x, y, z)
               .applyQuaternion(transform.quaternion)
               .add(transform.position)
               .applyQuaternion(rootRotation))
@@ -141,7 +180,6 @@ function SnakeModel({
         }
       }
     })
-    if (selectedPiece === undefined && !bounds.isEmpty()) bounds.getCenter(focusTarget.current)
   }
 
   useEffect(() => () => {
@@ -164,6 +202,10 @@ function SnakeModel({
     // targets represents the zero/current pose at mount; pieceCount remounts the set.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pieceCount, initialTransforms])
+
+  useLayoutEffect(() => {
+    updateFoldedBounds(targetFitTransforms)
+  }, [targetFitTransforms, foldedPieceCount])
 
   // In demand-driven mode a React state change schedules the first frame, then
   // the animation explicitly asks for more frames only until every joint settles.
@@ -281,22 +323,77 @@ function CameraRig({
   resetSignal,
   pieceCount,
   focusTarget,
+  foldedBounds,
+  currentStep,
+  autoPlaying,
+  viewportFitSignal,
+  viewportFitActive,
+  viewportLocked,
+  onViewportFitComplete,
+  onBlockedZoom,
   onViewControlStart,
   onViewControlEnd,
 }: {
   resetSignal: number
   pieceCount: number
   focusTarget: MutableRefObject<Vector3>
+  foldedBounds: MutableRefObject<Box3>
+  currentStep: number
+  autoPlaying: boolean
+  viewportFitSignal: number
+  viewportFitActive: boolean
+  viewportLocked: boolean
+  onViewportFitComplete?: () => void
+  onBlockedZoom?: () => void
   onViewControlStart?: () => void
   onViewControlEnd?: () => void
 }) {
   const controls = useRef<any>(null)
   const appliedFocus = useRef(new Vector3(Number.NaN, Number.NaN, Number.NaN))
   const userControlling = useRef(false)
-  const { camera } = useThree()
+  const lastFitStep = useRef(0)
+  const observedStep = useRef(0)
+  const fitSphere = useRef(new Sphere())
+  const autoFitDistance = useRef<number | undefined>(undefined)
+  const startFitSignal = useRef(viewportFitSignal)
+  const startFitCenter = useRef<Vector3 | undefined>(undefined)
+  const startFitDirection = useRef<Vector3 | undefined>(undefined)
+  const { camera, gl, invalidate } = useThree()
+  const lastZoomNotice = useRef(0)
   useEffect(() => {
-    if (controls.current) controls.current.mouseButtons.right = CameraControlsImpl.ACTION.OFFSET
-  }, [])
+    if (controls.current) {
+      controls.current.mouseButtons.right = viewportLocked
+        ? CameraControlsImpl.ACTION.NONE
+        : CameraControlsImpl.ACTION.OFFSET
+    }
+  }, [viewportLocked])
+  useEffect(() => {
+    const showBlockedNotice = () => {
+      const now = performance.now()
+      if (now - lastZoomNotice.current > 1000) {
+        lastZoomNotice.current = now
+        onBlockedZoom?.()
+      }
+    }
+    const blockZoom = (event: WheelEvent) => {
+      if (!viewportLocked) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      showBlockedNotice()
+    }
+    const blockRightPan = (event: PointerEvent) => {
+      if (!viewportLocked || event.button !== 2) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      showBlockedNotice()
+    }
+    gl.domElement.addEventListener('wheel', blockZoom, { capture: true, passive: false })
+    gl.domElement.addEventListener('pointerdown', blockRightPan, { capture: true })
+    return () => {
+      gl.domElement.removeEventListener('wheel', blockZoom, { capture: true })
+      gl.domElement.removeEventListener('pointerdown', blockRightPan, { capture: true })
+    }
+  }, [gl, viewportLocked, onBlockedZoom])
   useEffect(() => {
     const straightSpan = pieceCount * Math.SQRT2 / 2
     const distance = Math.max(14, straightSpan * 1.6)
@@ -306,15 +403,130 @@ function CameraRig({
     controls.current?.setFocalOffset(0, 0, 0, false)
     appliedFocus.current.copy(target)
   }, [camera, resetSignal, pieceCount, focusTarget])
-  useFrame(() => {
+  useFrame((_, delta) => {
     const controlsInstance = controls.current
-    if (!controlsInstance || userControlling.current || appliedFocus.current.distanceToSquared(focusTarget.current) < 0.000001) return
-    const target = focusTarget.current
-    // CameraControls keeps the current camera transform and uses a focal offset,
-    // so an off-centre block can become the real orbit pivot without jumping to
-    // the middle of the screen. User trucking/panning remains untouched.
-    controlsInstance.setOrbitPoint(target.x, target.y, target.z)
-    appliedFocus.current.copy(target)
+    if (!controlsInstance || userControlling.current) return
+    if (!viewportFitActive && !viewportLocked && startFitCenter.current) {
+      startFitCenter.current = undefined
+      startFitDirection.current = undefined
+      autoFitDistance.current = undefined
+    }
+    if (!autoPlaying && !viewportFitActive && !viewportLocked) autoFitDistance.current = undefined
+    if (viewportFitActive && startFitSignal.current !== viewportFitSignal) {
+      startFitSignal.current = viewportFitSignal
+      if (foldedBounds.current.isEmpty()) {
+        onViewportFitComplete?.()
+      } else {
+        // setOrbitPoint preserves the picture by storing a focal offset. That
+        // offset must not leak into a deliberate re-centre, otherwise the new
+        // target is mathematically correct but remains pushed off-screen.
+        controlsInstance.setFocalOffset(0, 0, 0, false)
+        const sphere = foldedBounds.current.getBoundingSphere(fitSphere.current)
+        const perspectiveCamera = camera as PerspectiveCamera
+        const verticalHalfFov = perspectiveCamera.fov * Math.PI / 360
+        const horizontalHalfFov = Math.atan(Math.tan(verticalHalfFov) * perspectiveCamera.aspect)
+        const limitingHalfFov = Math.min(verticalHalfFov, horizontalHalfFov)
+        // Keep enough room to the right of piece 1 for roughly ten straight
+        // pieces. Fitting a single piece by itself made the opening shot huge.
+        const previewSpan = Math.min(10, pieceCount) * Math.SQRT1_2
+        const minimumPlaybackDistance = previewSpan / Math.tan(horizontalHalfFov) * 1.05
+        const fittedDistance = Math.max(
+          2,
+          minimumPlaybackDistance,
+          sphere.radius / Math.sin(limitingHalfFov) * 1.08,
+        )
+        // Starting a new playback may move in to the first block. Enabling the
+        // option during playback follows the continuous rule: never zoom in.
+        autoFitDistance.current = autoPlaying
+          ? Math.max(controlsInstance.distance, fittedDistance)
+          : fittedDistance
+        startFitCenter.current = sphere.center.clone()
+        startFitDirection.current = new Vector3(0, 0, 1)
+          .applyQuaternion(camera.quaternion)
+          .normalize()
+      }
+    }
+    if (startFitCenter.current && autoFitDistance.current !== undefined) {
+      const currentTarget = controlsInstance.getTarget(new Vector3())
+      const centerDifference = startFitCenter.current.clone().sub(currentTarget)
+      const distanceDifference = autoFitDistance.current - controlsInstance.distance
+      const alpha = 1 - Math.exp(-5.5 * Math.min(delta, 1 / 30))
+      if (centerDifference.lengthSq() < 0.0001 && Math.abs(distanceDifference) < 0.01) {
+        const center = startFitCenter.current
+        const direction = startFitDirection.current ?? camera.position.clone().sub(currentTarget).normalize()
+        const position = center.clone().addScaledVector(direction, autoFitDistance.current)
+        controlsInstance.setLookAt(position.x, position.y, position.z, center.x, center.y, center.z, false)
+        appliedFocus.current.copy(center)
+        startFitCenter.current = undefined
+        startFitDirection.current = undefined
+        autoFitDistance.current = undefined
+        onViewportFitComplete?.()
+      } else {
+        const nextTarget = currentTarget.addScaledVector(centerDifference, alpha)
+        const nextDistance = controlsInstance.distance + distanceDifference * alpha
+        const direction = startFitDirection.current ?? camera.position.clone()
+          .sub(controlsInstance.getTarget(new Vector3()))
+          .normalize()
+        const position = nextTarget.clone().addScaledVector(direction, nextDistance)
+        controlsInstance.setLookAt(position.x, position.y, position.z, nextTarget.x, nextTarget.y, nextTarget.z, false)
+        invalidate()
+      }
+      return
+    }
+    if (appliedFocus.current.distanceToSquared(focusTarget.current) >= 0.000001) {
+      const target = focusTarget.current
+      // CameraControls keeps the current camera transform and uses a focal offset,
+      // so an off-centre block can become the real orbit pivot without jumping to
+      // the middle of the screen. User trucking/panning remains untouched.
+      controlsInstance.setOrbitPoint(target.x, target.y, target.z)
+      appliedFocus.current.copy(target)
+    }
+    if (autoPlaying && autoFitDistance.current !== undefined) {
+      const currentDistance = controlsInstance.distance
+      const difference = autoFitDistance.current - currentDistance
+      if (Math.abs(difference) < 0.01) {
+        controlsInstance.dollyTo(autoFitDistance.current, false)
+        autoFitDistance.current = undefined
+        startFitCenter.current = undefined
+      } else {
+        // Drive the transition ourselves: the canvas renders on demand, so a
+        // one-shot CameraControls transition is not guaranteed to receive all
+        // the frames it needs.
+        const alpha = 1 - Math.exp(-5.5 * Math.min(delta, 1 / 30))
+        controlsInstance.dollyTo(currentDistance + difference * alpha, false)
+        invalidate()
+      }
+    }
+    if (!autoPlaying || currentStep <= 0 || foldedBounds.current.isEmpty()) return
+    if (observedStep.current === currentStep) return
+    observedStep.current = currentStep
+    const sphere = foldedBounds.current.getBoundingSphere(fitSphere.current)
+    const perspectiveCamera = camera as PerspectiveCamera
+    const verticalHalfFov = perspectiveCamera.fov * Math.PI / 360
+    const horizontalHalfFov = Math.atan(Math.tan(verticalHalfFov) * perspectiveCamera.aspect)
+    const limitingHalfFov = Math.min(verticalHalfFov, horizontalHalfFov)
+    const offCenterAllowance = sphere.center.distanceTo(focusTarget.current)
+    // The active joint is commonly near the end of the folded prefix. Adding
+    // its full distance from the bounds centre effectively counted the shape
+    // twice and made it look tiny. A capped 20% allowance keeps off-centre
+    // compositions safe without sacrificing useful screen area.
+    const effectiveRadius = sphere.radius + Math.min(offCenterAllowance, sphere.radius) * 0.2
+    const previewSpan = Math.min(10, pieceCount) * Math.SQRT1_2
+    const minimumPlaybackDistance = previewSpan / Math.tan(horizontalHalfFov) * 1.05
+    const desiredDistance = Math.max(
+      2,
+      minimumPlaybackDistance,
+      (effectiveRadius / Math.sin(limitingHalfFov)) * 1.03,
+    )
+    const currentDistance = controlsInstance.distance
+    const overflowing = desiredDistance > currentDistance * 1.03
+    const cadenceReached = currentStep - lastFitStep.current >= 3
+    const needsMoreRoom = Math.log(desiredDistance / currentDistance) > 0.16
+    if (overflowing || (cadenceReached && needsMoreRoom)) {
+      autoFitDistance.current = desiredDistance
+      lastFitStep.current = currentStep
+      invalidate()
+    }
   })
   return (
     <CameraControls
@@ -323,7 +535,13 @@ function CameraRig({
       minDistance={2}
       maxDistance={200}
       smoothTime={0.18}
-      onControlStart={() => { userControlling.current = true; onViewControlStart?.() }}
+      onControlStart={() => {
+        userControlling.current = true
+        controls.current?.stop()
+        lastFitStep.current = currentStep
+        observedStep.current = currentStep
+        onViewControlStart?.()
+      }}
       onControlEnd={() => { userControlling.current = false; onViewControlEnd?.() }}
     />
   )
@@ -332,6 +550,10 @@ function CameraRig({
 export function SnakeScene(props: SnakeSceneProps) {
   const shadowExtent = Math.max(14, props.pieceCount * 0.56)
   const focusTarget = useRef(new Vector3())
+  const foldedBounds = useRef(new Box3())
+  const foldedPieceCount = props.currentStep > 0
+    ? Math.max(...props.steps.slice(0, props.currentStep).map((step) => step.joint)) + 1
+    : 1
   return (
     <Canvas
       shadows="soft"
@@ -364,7 +586,12 @@ export function SnakeScene(props: SnakeSceneProps) {
         <Lightformer form="rect" intensity={2.2} color="#d9e8ff" position={[-7, 3, -4]} scale={[5, 5, 1]} target={[0, 1, 0]} />
         <Lightformer form="rect" intensity={1.5} color="#ffffff" position={[8, -1, -2]} scale={[3, 3, 1]} target={[0, 0, 0]} />
       </Environment>
-      <SnakeModel {...props} focusTarget={focusTarget} />
+      <SnakeModel
+        {...props}
+        focusTarget={focusTarget}
+        foldedBounds={foldedBounds}
+        foldedPieceCount={foldedPieceCount}
+      />
       <ContactShadows
         position={[0, -0.14, 0]}
         opacity={0.3}
@@ -378,6 +605,14 @@ export function SnakeScene(props: SnakeSceneProps) {
         resetSignal={props.resetSignal}
         pieceCount={props.pieceCount}
         focusTarget={focusTarget}
+        foldedBounds={foldedBounds}
+        currentStep={props.currentStep}
+        autoPlaying={props.autoPlaying ?? false}
+        viewportFitSignal={props.viewportFitSignal ?? 0}
+        viewportFitActive={props.viewportFitActive ?? false}
+        viewportLocked={props.viewportLocked ?? false}
+        onViewportFitComplete={props.onViewportFitComplete}
+        onBlockedZoom={props.onBlockedZoom}
         onViewControlStart={props.onViewControlStart}
         onViewControlEnd={props.onViewControlEnd}
       />

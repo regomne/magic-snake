@@ -22,7 +22,6 @@ import { SnakeScene } from './components/SnakeScene'
 import { analyzeCollisions, appendTurn } from './domain/collision'
 import { formatFormula, parseFormula } from './domain/formula'
 import type { Turn } from './domain/formula'
-import { PIECE_SIZE_MM } from './domain/snake'
 
 const LENGTHS = [24, 36, 48, 72] as const
 const EXAMPLE = '1(1), 3(-1), 5(2), 7(1), 9(-1), 11(1), 13(2), 15(-1), 17(1), 19(2), 21(-1), 23(1)'
@@ -74,6 +73,9 @@ function App() {
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)
   const [pauseMs, setPauseMs] = useState(350)
+  const [autoViewport, setAutoViewport] = useState(true)
+  const [viewportFitSignal, setViewportFitSignal] = useState(0)
+  const [preparingPlayback, setPreparingPlayback] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [resetSignal, setResetSignal] = useState(0)
   const [viewInteracting, setViewInteracting] = useState(false)
@@ -196,11 +198,26 @@ function App() {
 
   function togglePlaying() {
     if (!steps.length || parsed.errors.length) return
+    if (preparingPlayback) {
+      setPreparingPlayback(false)
+      return
+    }
+    if (playing) { setPlaying(false); return }
     if (!playing && currentStep === steps.length) {
       setCurrentStep(0)
       setSelectedPiece(undefined)
     }
-    setPlaying((value) => !value)
+    if (autoViewport) {
+      setPreparingPlayback(true)
+      setViewportFitSignal((value) => value + 1)
+    } else {
+      setPlaying(true)
+    }
+  }
+
+  function changeAutoViewport(enabled: boolean) {
+    setAutoViewport(enabled)
+    if (enabled && playing) setViewportFitSignal((value) => value + 1)
   }
 
   async function share() {
@@ -349,13 +366,23 @@ function App() {
         </aside>
 
         <section className="viewer-panel">
-          <div className="viewer-badge">{pieceCount} 段 · {PIECE_SIZE_MM} mm{selectedPiece ? ` · 方块 ${selectedPiece}${selectedJoint ? ` / 关节 ${selectedJoint}` : ''}` : ''}</div>
+          <div className="viewer-badge">{pieceCount} 段{selectedPiece ? ` · 方块 ${selectedPiece}${selectedJoint ? ` / 关节 ${selectedJoint}` : ''}` : ''}</div>
           <SnakeScene
             pieceCount={pieceCount}
             steps={steps}
             currentStep={currentStep}
             animationDuration={animationDuration}
             animationPaused={viewInteracting}
+            autoPlaying={autoViewport && playing}
+            viewportFitSignal={viewportFitSignal}
+            viewportFitActive={preparingPlayback || (autoViewport && playing)}
+            viewportLocked={autoViewport && (playing || preparingPlayback || (viewInteracting && resumePlaybackAfterView.current))}
+            onViewportFitComplete={() => {
+              if (!preparingPlayback) return
+              setPreparingPlayback(false)
+              setPlaying(true)
+            }}
+            onBlockedZoom={() => setNotice('播放中无法缩放大小或右键平移，请取消“自动调整视口”后再试')}
             resetSignal={resetSignal}
             selectedPiece={selectedPiece}
             collisionPieces={collisionPieces}
@@ -386,12 +413,12 @@ function App() {
         <div className="transport">
           <button aria-label="回到开头" onClick={() => goToStep(0)}><SkipBack size={19} /></button>
           <button aria-label="上一步" onClick={() => goToStep(currentStep - 1)}><ChevronLeft size={22} /></button>
-          <button className="play-button" aria-label={playing ? '暂停' : '播放'} onClick={togglePlaying}>{playing ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" />}</button>
+          <button className="play-button" aria-label={playing || preparingPlayback ? '暂停' : '播放'} onClick={togglePlaying}>{playing || preparingPlayback ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" />}</button>
           <button aria-label="下一步" onClick={() => goToStep(currentStep + 1)}><ChevronRight size={22} /></button>
           <button aria-label="跳到结尾" onClick={() => goToStep(steps.length)}><SkipForward size={19} /></button>
         </div>
         <div className="timeline"><input type="range" min={0} max={Math.max(steps.length, 1)} value={currentStep} onChange={(event) => goToStep(Number(event.target.value))} style={{ '--progress': `${steps.length ? currentStep / steps.length * 100 : 0}%` } as React.CSSProperties} /><div className="timeline-copy"><span>{active ? `第 ${currentStep} 步 · 关节 ${active.joint}` : '初始状态'}</span><b>{currentStep} / {steps.length}</b></div></div>
-        <div className="play-settings"><label>速度<select value={speed} onChange={(event) => setSpeed(Number(event.target.value))}><option value={0.5}>0.5×</option><option value={1}>1×</option><option value={1.5}>1.5×</option><option value={2}>2×</option></select></label><label>停顿<select value={pauseMs} onChange={(event) => setPauseMs(Number(event.target.value))}><option value={0}>无</option><option value={350}>0.35s</option><option value={700}>0.7s</option><option value={1200}>1.2s</option></select></label></div>
+        <div className="play-settings"><label>速度<select value={speed} onChange={(event) => setSpeed(Number(event.target.value))}><option value={0.5}>0.5×</option><option value={1}>1×</option><option value={1.5}>1.5×</option><option value={2}>2×</option></select></label><label>停顿<select value={pauseMs} onChange={(event) => setPauseMs(Number(event.target.value))}><option value={0}>无</option><option value={350}>0.35s</option><option value={700}>0.7s</option><option value={1200}>1.2s</option></select></label><label className="auto-viewport"><span>播放视口</span><span><input type="checkbox" checked={autoViewport} onChange={(event) => changeAutoViewport(event.target.checked)} /> 自动调整</span></label></div>
       </footer>
 
       {notice && <div className="toast" role="status">{notice}</div>}
