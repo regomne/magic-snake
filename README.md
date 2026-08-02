@@ -2,6 +2,8 @@
 
 A browser-based 3D editor and player for designing Rubik's Snake shapes. It supports 24, 36, 48, and 72-piece snakes and runs entirely on the client side.
 
+[Live demo](https://regomne.github.io/magic-snake/)
+
 ![Magic Snake Workbench](public/magic-snake-workbench.png)
 
 ## Features
