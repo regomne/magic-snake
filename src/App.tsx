@@ -57,6 +57,7 @@ function App() {
   const [pauseMs, setPauseMs] = useState(350)
   const [autoViewport, setAutoViewport] = useState(true)
   const [viewportFitSignal, setViewportFitSignal] = useState(0)
+  const [axisRotation, setAxisRotation] = useState<'x+' | 'x-' | 'y+' | 'y-' | 'z+' | 'z-' | undefined>()
   const [preparingPlayback, setPreparingPlayback] = useState(false)
   const [fittingPreset, setFittingPreset] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
@@ -219,6 +220,12 @@ function App() {
     if (enabled && playing) setViewportFitSignal((value) => value + 1)
   }
 
+  function startAxisRotation(axis: Exclude<typeof axisRotation, undefined>) {
+    setPlaying(false)
+    setPreparingPlayback(false)
+    setAxisRotation(axis)
+  }
+
   function changeFormulaNotation(notation: FormulaNotation) {
     setFormulaNotation(notation)
     if (!parsed.errors.length) setFormula(formatFormula(parsed.steps, notation, pieceCount))
@@ -357,6 +364,7 @@ function App() {
             viewportFitSignal={viewportFitSignal}
             viewportFitActive={fittingPreset || preparingPlayback || (autoViewport && playing)}
             viewportFitPadding={fittingPreset ? 0.94 : 1.08}
+            axisRotation={axisRotation}
             viewportLocked={autoViewport && (playing || preparingPlayback || (viewInteracting && resumePlaybackAfterView.current))}
             onViewportFitComplete={() => {
               if (fittingPreset) setFittingPreset(false)
@@ -372,6 +380,15 @@ function App() {
             onViewControlStart={startViewControl}
             onViewControlEnd={endViewControl}
           />
+          <div className="axis-controls" aria-label={en ? 'Axis views' : '六轴视角'}>
+            {(['x', 'y', 'z'] as const).map((axis) => (
+              <div className="axis-control-group" key={axis}>
+                <span>{axis.toUpperCase()}</span>
+                <button type="button" onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); startAxisRotation(`${axis}+`) }} onPointerUp={() => setAxisRotation(undefined)} onPointerCancel={() => setAxisRotation(undefined)} title={`${axis.toUpperCase()}+`}>+</button>
+                <button type="button" onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); startAxisRotation(`${axis}-`) }} onPointerUp={() => setAxisRotation(undefined)} onPointerCancel={() => setAxisRotation(undefined)} title={`${axis.toUpperCase()}-`}>−</button>
+              </div>
+            ))}
+          </div>
           <div className="viewer-hint">{en ? 'Click to select · Drag to orbit · Wheel to zoom' : '点击选择方块 · 拖动旋转视角 · 滚轮缩放'}</div>
         </section>
 

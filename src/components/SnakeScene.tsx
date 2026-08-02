@@ -34,6 +34,7 @@ interface SnakeSceneProps {
   viewportFitSignal?: number
   viewportFitActive?: boolean
   viewportFitPadding?: number
+  axisRotation?: 'x+' | 'x-' | 'y+' | 'y-' | 'z+' | 'z-'
   viewportLocked?: boolean
   onViewportFitComplete?: () => void
   onBlockedZoom?: () => void
@@ -348,6 +349,7 @@ function CameraRig({
   viewportFitSignal,
   viewportFitActive,
   viewportFitPadding,
+  axisRotation,
   viewportLocked,
   onViewportFitComplete,
   onBlockedZoom,
@@ -363,6 +365,7 @@ function CameraRig({
   viewportFitSignal: number
   viewportFitActive: boolean
   viewportFitPadding: number
+  axisRotation?: 'x+' | 'x-' | 'y+' | 'y-' | 'z+' | 'z-'
   viewportLocked: boolean
   onViewportFitComplete?: () => void
   onBlockedZoom?: () => void
@@ -427,6 +430,20 @@ function CameraRig({
   useFrame((_, delta) => {
     const controlsInstance = controls.current
     if (!controlsInstance || userControlling.current) return
+    if (axisRotation) {
+      const target = focusTarget.current
+      const axis = axisRotation[0] === 'x'
+        ? new Vector3(1, 0, 0)
+        : axisRotation[0] === 'y' ? new Vector3(0, 1, 0) : new Vector3(0, 0, 1)
+      const angle = Math.min(delta, 1 / 30) * 0.9 * (axisRotation[1] === '+' ? 1 : -1)
+      const position = camera.position.clone().sub(target).applyAxisAngle(axis, angle).add(target)
+      camera.up.applyAxisAngle(axis, angle).normalize()
+      controlsInstance.setFocalOffset(0, 0, 0, false)
+      controlsInstance.setLookAt(position.x, position.y, position.z, target.x, target.y, target.z, false)
+      appliedFocus.current.copy(target)
+      invalidate()
+      return
+    }
     if (!viewportFitActive && !viewportLocked && startFitCenter.current) {
       startFitCenter.current = undefined
       startFitDirection.current = undefined
@@ -657,6 +674,7 @@ export function SnakeScene(props: SnakeSceneProps) {
         viewportFitSignal={props.viewportFitSignal ?? 0}
         viewportFitActive={props.viewportFitActive ?? false}
         viewportFitPadding={props.viewportFitPadding ?? 1.08}
+        axisRotation={props.axisRotation}
         viewportLocked={props.viewportLocked ?? false}
         onViewportFitComplete={props.onViewportFitComplete}
         onBlockedZoom={props.onBlockedZoom}
