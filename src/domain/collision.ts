@@ -1,6 +1,7 @@
-import { Matrix4, Vector3 } from 'three'
+import { Matrix4, Quaternion, Vector3 } from 'three'
 import type { FormulaStep, Turn } from './formula'
-import { calculateTransforms, PIECE_SIZE, turnsAtStep } from './snake'
+import { PIECE_SIZE, turnsAtStep } from './snake'
+import type { PieceTransform } from './snake'
 
 export interface CollisionPair {
   pieces: [number, number]
@@ -8,105 +9,190 @@ export interface CollisionPair {
 
 export interface CollisionIssue extends CollisionPair {
   step: number
-  kind: 'pose' | 'path'
+  kind: 'pose'
 }
 
-const EDGE_INDICES: Array<[number, number]> = [
-  [0, 1], [1, 2], [2, 0], [3, 4], [4, 5], [5, 3], [0, 3], [1, 4], [2, 5],
-]
-const FACE_INDICES: Array<[number, number, number]> = [
-  [0, 1, 2], [3, 5, 4], [0, 3, 4], [0, 4, 1], [1, 4, 5], [1, 5, 2], [2, 5, 3], [2, 3, 0],
+export interface LatticePiece {
+  piece: number
+  cell: [number, number, number]
+  /** Missing-edge encoding: edge axis * 4 + the other two fixed coordinate bits. */
+  type: number
+  /** Right-angle corner on the negative extrusion end. */
+  origin: [number, number, number]
+  /** Oriented unit-cell axes for the two triangle legs and extrusion. */
+  basis: [[number, number, number], [number, number, number], [number, number, number]]
+}
+
+const latticeX = new Vector3(Math.SQRT1_2, -Math.SQRT1_2, 0)
+// X × Y = Z: keep the lattice basis right-handed so integer cross products
+// have exactly the same rotation convention as Three.js.
+const latticeY = new Vector3(Math.SQRT1_2, Math.SQRT1_2, 0)
+const latticeZ = new Vector3(0, 0, 1)
+
+type Int3 = [number, number, number]
+
+interface ExactPieceState {
+  /** Twice the right-angle corner, keeping square-face pivots integral. */
+  origin2: Int3
+  a: Int3
+  b: Int3
+  c: Int3
+}
+
+const add = (a: Int3, b: Int3): Int3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+const subtract = (a: Int3, b: Int3): Int3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+const scale = (value: Int3, factor: number): Int3 => [value[0] * factor, value[1] * factor, value[2] * factor]
+const dot = (a: Int3, b: Int3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+const cross = (a: Int3, b: Int3): Int3 => [
+  a[1] * b[2] - a[2] * b[1],
+  a[2] * b[0] - a[0] * b[2],
+  a[0] * b[1] - a[1] * b[0],
 ]
 
-function pieceVertices(index: number, matrix: Matrix4) {
+function rotateQuarter(value: Int3, axis: Int3, quarterTurns: number): Int3 {
+  const turn = ((quarterTurns % 4) + 4) % 4
+  const parallel = scale(axis, dot(axis, value))
+  if (turn === 0) return [...value]
+  if (turn === 1) return add(cross(axis, value), parallel)
+  if (turn === 2) return add(scale(value, -1), scale(parallel, 2))
+  return add(scale(cross(axis, value), -1), parallel)
+}
+
+function nextExactState(state: ExactPieceState, index: number, formulaTurn: number): ExactPieceState {
+  const even = index % 2 === 0
+  const faceSpan = even ? state.a : state.b
+  const axis = scale(even ? state.b : state.a, -1)
+  const pivot2 = add(state.origin2, add(faceSpan, state.c))
+  const unrotatedOrigin2 = add(state.origin2, scale(faceSpan, 2))
+  // Formula clockwise is the negative right-hand angle, matching rendering.
+  const turn = -formulaTurn
+  return {
+    origin2: add(pivot2, rotateQuarter(subtract(unrotatedOrigin2, pivot2), axis, turn)),
+    a: rotateQuarter(scale(state.a, -1), axis, turn),
+    b: rotateQuarter(scale(state.b, -1), axis, turn),
+    c: rotateQuarter(state.c, axis, turn),
+  }
+}
+
+function cornerCode(point: [number, number, number], cell: [number, number, number]) {
+  const x = point[0] - cell[0]
+  const y = point[1] - cell[1]
+  const z = point[2] - cell[2]
+  return x | (y << 1) | (z << 2)
+}
+
+function latticeVector(value: [number, number, number]) {
+  return latticeX.clone().multiplyScalar(value[0])
+    .addScaledVector(latticeY, value[1])
+    .addScaledVector(latticeZ, value[2])
+}
+
+function typeFromCorners(corners: number[]) {
+  const occupied = new Set(corners)
+  const missing = Array.from({ length: 8 }, (_, corner) => corner).filter((corner) => !occupied.has(corner))
+  if (missing.length !== 2) throw new Error('魔尺方块没有落在一个有效的半立方格中')
+  const difference = missing[0] ^ missing[1]
+  const edgeAxis = difference === 1 ? 0 : difference === 2 ? 1 : difference === 4 ? 2 : -1
+  if (edgeAxis < 0) throw new Error('半立方格缺失的两个角没有组成一条边')
+  const otherAxes = [0, 1, 2].filter((axis) => axis !== edgeAxis)
+  const fixedBits = ((missing[0] >> otherAxes[0]) & 1) | (((missing[0] >> otherAxes[1]) & 1) << 1)
+  return edgeAxis * 4 + fixedBits
+}
+
+/** The other half of the same diagonally divided unit cube. */
+export function complementaryType(type: number) {
+  return Math.floor(type / 4) * 4 + ((type % 4) ^ 0b11)
+}
+
+/**
+ * Generates final poses directly in the snake's integer lattice. All state
+ * transitions use integer addition, dot products and cross products only.
+ */
+export function calculateLatticePieces(pieceCount: number, turns: number[]): LatticePiece[] {
+  const pieces: LatticePiece[] = []
+  let state: ExactPieceState = { origin2: [0, 0, 0], a: [1, 0, 0], b: [0, -1, 0], c: [0, 0, 1] }
+  for (let index = 0; index < pieceCount; index += 1) {
+    if (state.origin2.some((coordinate) => coordinate % 2 !== 0)) {
+      throw new Error('魔尺整数晶格状态落在了半格位置')
+    }
+    const origin = state.origin2.map((coordinate) => coordinate / 2) as Int3
+    const latticeVertices: Int3[] = [
+      origin,
+      add(origin, state.a),
+      add(origin, state.b),
+      add(origin, state.c),
+      add(add(origin, state.a), state.c),
+      add(add(origin, state.b), state.c),
+    ]
+    const cell: [number, number, number] = [
+      Math.min(...latticeVertices.map((vertex) => vertex[0])),
+      Math.min(...latticeVertices.map((vertex) => vertex[1])),
+      Math.min(...latticeVertices.map((vertex) => vertex[2])),
+    ]
+    pieces.push({
+      piece: index + 1,
+      cell,
+      type: typeFromCorners(latticeVertices.map((vertex) => cornerCode(vertex, cell))),
+      origin,
+      basis: [state.a, state.b, state.c],
+    })
+    if (index < pieceCount - 1) state = nextExactState(state, index, turns[index] ?? 0)
+  }
+  return pieces
+}
+
+/** Converts a discrete lattice pose back into drift-free Three.js transforms. */
+export function calculateSnappedTransforms(pieceCount: number, turns: number[]): PieceTransform[] {
+  const pieces = calculateLatticePieces(pieceCount, turns)
   const width = Math.SQRT2 * PIECE_SIZE
-  const upper = index % 2 === 1
-  const points = upper
-    ? [[0, width / 2], [width / 2, 0], [width, width / 2]]
-    : [[0, 0], [width, 0], [width / 2, width / 2]]
-  const centerX = width / 2
-  const centerY = upper ? width / 3 : width / 6
-  const shell = 0.982
-  return [-0.491, 0.491].flatMap((z) => points.map(([x, y]) => new Vector3(
-    centerX + (x - centerX) * shell,
-    centerY + (y - centerY) * shell,
-    z,
-  ).applyMatrix4(matrix)))
-}
-
-function axesFor(vertices: Vector3[]) {
-  const axes: Vector3[] = []
-  FACE_INDICES.forEach(([a, b, c]) => {
-    const axis = vertices[b].clone().sub(vertices[a]).cross(vertices[c].clone().sub(vertices[a]))
-    if (axis.lengthSq() > 1e-10) axes.push(axis.normalize())
+  const worldOrigin = new Vector3(
+    Math.SQRT1_2 * PIECE_SIZE - (width * (pieceCount - 1)) / 4,
+    Math.SQRT1_2 * PIECE_SIZE,
+    -PIECE_SIZE / 2,
+  )
+  return pieces.map((piece, index) => {
+    const upper = index % 2 === 1
+    const localOrigin = new Vector3(width / 2, upper ? 0 : width / 2, -PIECE_SIZE / 2)
+    const localA = upper ? latticeX.clone().negate() : latticeX.clone()
+    const localB = upper ? latticeY.clone() : latticeY.clone().negate()
+    const localBasis = new Matrix4().makeBasis(localA, localB, latticeZ).transpose()
+    const worldBasis = new Matrix4().makeBasis(
+      latticeVector(piece.basis[0]),
+      latticeVector(piece.basis[1]),
+      latticeVector(piece.basis[2]),
+    )
+    const rotation = worldBasis.multiply(localBasis)
+    const quaternion = new Quaternion().setFromRotationMatrix(rotation)
+    const snappedOrigin = worldOrigin.clone()
+      .addScaledVector(latticeX, piece.origin[0])
+      .addScaledVector(latticeY, piece.origin[1])
+      .addScaledVector(latticeZ, piece.origin[2])
+    const position = snappedOrigin.sub(localOrigin.applyQuaternion(quaternion))
+    return { position, quaternion }
   })
-  return axes
-}
-
-function edgeDirections(vertices: Vector3[]) {
-  return EDGE_INDICES.map(([a, b]) => vertices[b].clone().sub(vertices[a]).normalize())
-}
-
-function separated(a: Vector3[], b: Vector3[], axis: Vector3) {
-  let aMin = Infinity; let aMax = -Infinity; let bMin = Infinity; let bMax = -Infinity
-  a.forEach((point) => { const value = point.dot(axis); aMin = Math.min(aMin, value); aMax = Math.max(aMax, value) })
-  b.forEach((point) => { const value = point.dot(axis); bMin = Math.min(bMin, value); bMax = Math.max(bMax, value) })
-  return aMax <= bMin + 1e-5 || bMax <= aMin + 1e-5
-}
-
-function intersects(a: Vector3[], b: Vector3[]) {
-  const axes = [...axesFor(a), ...axesFor(b)]
-  const aEdges = edgeDirections(a)
-  const bEdges = edgeDirections(b)
-  aEdges.forEach((edgeA) => bEdges.forEach((edgeB) => {
-    const axis = edgeA.clone().cross(edgeB)
-    if (axis.lengthSq() > 1e-10) axes.push(axis.normalize())
-  }))
-  return !axes.some((axis) => separated(a, b, axis))
 }
 
 export function detectCollisions(pieceCount: number, turns: number[]): CollisionPair[] {
-  const transforms = calculateTransforms(pieceCount, turns)
-  const vertices = transforms.map((transform, index) => {
-    const matrix = new Matrix4().compose(transform.position, transform.quaternion, new Vector3(1, 1, 1))
-    return pieceVertices(index, matrix)
-  })
-  const centers = vertices.map((points) => points.reduce((sum, point) => sum.add(point), new Vector3()).multiplyScalar(1 / points.length))
-  const radii = vertices.map((points, index) => Math.max(...points.map((point) => point.distanceTo(centers[index]))))
+  const occupied = new Map<string, LatticePiece[]>()
   const collisions: CollisionPair[] = []
-  for (let first = 0; first < pieceCount; first += 1) {
-    // Neighbours intentionally share a hinge, so only test non-adjacent shells.
-    for (let second = first + 2; second < pieceCount; second += 1) {
-      if (centers[first].distanceToSquared(centers[second]) > (radii[first] + radii[second]) ** 2) continue
-      if (intersects(vertices[first], vertices[second])) collisions.push({ pieces: [first + 1, second + 1] })
-    }
-  }
+  calculateLatticePieces(pieceCount, turns).forEach((piece) => {
+    const key = piece.cell.join(',')
+    const cell = occupied.get(key) ?? []
+    cell.forEach((other) => {
+      // In one unit cube, two half-cubes have disjoint interiors if and only if
+      // they are the complementary halves of the same diagonal cut.
+      if (piece.type !== complementaryType(other.type)) collisions.push({ pieces: [other.piece, piece.piece] })
+    })
+    cell.push(piece)
+    occupied.set(key, cell)
+  })
   return collisions
 }
 
+/** Checks only the exact final pose after each step; swept paths are intentionally out of scope. */
 export function analyzeCollisions(steps: FormulaStep[], pieceCount: number): CollisionIssue[] {
   const issues: CollisionIssue[] = []
   for (let step = 1; step <= steps.length; step += 1) {
-    const previousTurns = turnsAtStep(steps, step - 1, pieceCount)
-    const action = steps[step - 1]
-    const samples = Math.abs(action.turn) === 2 ? 12 : 6
-    // The compact notation does not preserve which semicircle was used for a
-    // 180° turn, nor the small spring-joint pull-out used on the physical toy.
-    // Its swept path is therefore under-specified; still validate its final
-    // pose, but reserve path validation for turns with an explicit direction.
-    const directions = action.turn === 2 ? [] : [action.turn]
-    const pathCollisions = directions.map((direction) => {
-      for (let sample = 1; sample < samples; sample += 1) {
-        const turns = [...previousTurns]
-        turns[action.joint - 1] += direction * (sample / samples)
-        const collision = detectCollisions(pieceCount, turns)[0]
-        if (collision) return collision
-      }
-      return undefined
-    })
-    if (pathCollisions.length > 0 && pathCollisions.every(Boolean)) {
-      issues.push({ ...pathCollisions[0]!, step, kind: 'path' })
-    }
     detectCollisions(pieceCount, turnsAtStep(steps, step, pieceCount)).forEach((collision) => {
       issues.push({ ...collision, step, kind: 'pose' })
     })

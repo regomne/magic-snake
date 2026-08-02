@@ -173,7 +173,7 @@ function App() {
     if (preventCollision) {
       const issue = analyzeCollisions(nextSteps, pieceCount).find((item) => item.step === nextSteps.length)
       if (issue) {
-        setNotice(`已阻止：第 ${issue.pieces[0]}、${issue.pieces[1]} 块发生${issue.kind === 'path' ? '路径' : '姿态'}碰撞`)
+        setNotice(`已阻止：第 ${issue.pieces[0]}、${issue.pieces[1]} 块最终位置重叠`)
         return
       }
     }
@@ -304,7 +304,7 @@ function App() {
               <button disabled={selectedJoint === undefined} onClick={() => rotateSelected(1)} title="快捷键 1"><RotateCw size={17} />顺时针</button>
             </div>
             <div className="edit-options">
-              <label><input type="checkbox" checked={preventCollision} onChange={(event) => setPreventCollision(event.target.checked)} /> 阻止不可实现的旋转</label>
+              <label><input type="checkbox" checked={preventCollision} onChange={(event) => setPreventCollision(event.target.checked)} /> 阻止最终位置重叠</label>
               <button onClick={() => commitFormula('')}>一键拉直</button>
             </div>
           </section>
@@ -321,7 +321,7 @@ function App() {
           />
           <div className="legend"><span><i className="cw" />1 顺时针</span><span><i className="ccw" />−1 逆时针</span><span><i className="half" />2 旋转 180°</span></div>
           {parsed.errors.length > 0 && <div className="error-box">{parsed.errors.map((error) => <p key={error}>{error}</p>)}</div>}
-          {collisionIssues.length > 0 && <div className="collision-box"><b>可行性检查：发现 {collisionIssues.length} 项</b><p>{collisionIssues.slice(0, 3).map((issue) => `步骤 ${issue.step}：方块 ${issue.pieces.join(' / ')} ${issue.kind === 'path' ? '旋转路径相撞' : '最终姿态相撞'}`).join('；')}</p></div>}
+          {collisionIssues.length > 0 && <div className="collision-box"><b>最终姿态检查：发现 {collisionIssues.length} 项</b><p>{collisionIssues.slice(0, 3).map((issue) => `步骤 ${issue.step}：方块 ${issue.pieces.join(' / ')} 占据重叠空间`).join('；')}</p></div>}
 
           <div className="file-actions">
             <button onClick={() => importRef.current?.click()}><Upload size={15} />导入</button>
@@ -369,7 +369,7 @@ function App() {
       </footer>
 
       {notice && <div className="toast" role="status">{notice}</div>}
-      {showHelp && <div className="modal-backdrop" onMouseDown={() => setShowHelp(false)}><article className="help-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setShowHelp(false)}>×</button><span className="eyebrow">WORKBENCH</span><h2>直接设计魔尺</h2><p>点击任意方块选择它的上一个关节，再使用旋转按钮。模型、公式和右侧教学步骤会自动同步。</p><div className="help-code">1：顺时针　−：逆时针　2：180°</div><ul><li><b>Ctrl/⌘ Z</b> 撤销，<b>Ctrl/⌘ Shift Z</b> 重做</li><li>碰撞检查同时检查最终姿态和旋转经过的路径</li><li>公式中关节 1 位于第 1、2 块之间</li></ul><p>工作内容会自动保存在浏览器中，也可以导出 JSON 或通过 URL 分享。</p></article></div>}
+      {showHelp && <div className="modal-backdrop" onMouseDown={() => setShowHelp(false)}><article className="help-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setShowHelp(false)}>×</button><span className="eyebrow">WORKBENCH</span><h2>直接设计魔尺</h2><p>点击任意方块选择它的上一个关节，再使用旋转按钮。模型、公式和右侧教学步骤会自动同步。</p><div className="help-code">1：顺时针　−：逆时针　2：180°</div><ul><li><b>Ctrl/⌘ Z</b> 撤销，<b>Ctrl/⌘ Shift Z</b> 重做</li><li>整数晶格检查每一步完成后的最终空间占位</li><li>公式中关节 1 位于第 1、2 块之间</li></ul><p>工作内容会自动保存在浏览器中，也可以导出 JSON 或通过 URL 分享。</p></article></div>}
     </main>
   )
 }

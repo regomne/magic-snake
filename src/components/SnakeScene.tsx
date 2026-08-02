@@ -18,6 +18,7 @@ import {
   Vector3,
 } from 'three'
 import type { FormulaStep } from '../domain/formula'
+import { calculateSnappedTransforms } from '../domain/collision'
 import { calculateTransforms, PIECE_SIZE, turnsAtStep } from '../domain/snake'
 
 interface SnakeSceneProps {
@@ -108,7 +109,7 @@ function SnakeModel({
   const targetTurns = useMemo(() => turnsAtStep(steps, currentStep, pieceCount), [steps, currentStep, pieceCount])
   const animatedTurns = useRef([...targetTurns])
   const initialTransforms = useMemo(
-    () => calculateTransforms(pieceCount, targetTurns),
+    () => calculateSnappedTransforms(pieceCount, targetTurns),
     // A length change remounts/reinitializes the chain; step changes animate below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [pieceCount],
@@ -180,7 +181,9 @@ function SnakeModel({
     }
     // Rebuild from fractional joint angles every frame. Every downstream block
     // therefore receives the exact same rigid rotation around the active hinge.
-    const frameTransforms = calculateTransforms(pieceCount, currentTurns)
+    const frameTransforms = isAnimating
+      ? calculateTransforms(pieceCount, currentTurns)
+      : calculateSnappedTransforms(pieceCount, currentTurns)
     groups.current.forEach((group, index) => {
       const target = frameTransforms[index]
       if (!group || !target) return
