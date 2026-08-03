@@ -374,13 +374,6 @@ function App() {
             </select>
           </div>
 
-          <div className="length-row">
-            <label htmlFor="piece-count">{en ? 'Snake length' : '魔尺段数'}</label>
-            <select id="piece-count" value={pieceCount} onChange={(event) => { const length = Number(event.target.value); setPieceCount(length); setCurrentStep(parseFormula(formula, length, language).steps.length); setPlaying(false); setSelectedPiece(undefined) }}>
-              {LENGTHS.map((length) => <option key={length} value={length}>{length} {en ? 'pieces' : '段'}</option>)}
-            </select>
-          </div>
-
           <section className="color-settings">
             <div className="color-settings-heading">
               <label htmlFor="color-mode">{en ? 'Color pattern' : '魔尺配色'}</label>
@@ -408,6 +401,13 @@ function App() {
               {pieceColors.map((color, index) => <i key={`${color}-${index}`} style={{ background: color }} />)}
             </div>}
           </section>
+
+          <div className="length-row">
+            <label htmlFor="piece-count">{en ? 'Snake length' : '魔尺段数'}</label>
+            <select id="piece-count" value={pieceCount} onChange={(event) => { const length = Number(event.target.value); setPieceCount(length); setCurrentStep(parseFormula(formula, length, language).steps.length); setPlaying(false); setSelectedPiece(undefined) }}>
+              {LENGTHS.map((length) => <option key={length} value={length}>{length} {en ? 'pieces' : '段'}</option>)}
+            </select>
+          </div>
 
           <div className="formula-heading">
             <label className="formula-label" htmlFor="formula">{en ? 'Formula' : '公式'}</label>
