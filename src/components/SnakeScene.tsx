@@ -514,7 +514,10 @@ function CameraRig({
       }
       if (!dx && !dy) return
       const target = controlsInstance.getTarget(new Vector3())
-      const offset = camera.position.clone().sub(target)
+      // camera.position includes CameraControls' screen-space focal offset.
+      // Feeding that rendered position back into setLookAt would bake the
+      // offset into the orbit and then apply it again on every pointer event.
+      const offset = controlsInstance.getPosition(new Vector3()).sub(target)
       const up = camera.up.clone().normalize()
       const radiansPerPixel = Math.PI * 2 / Math.max(320, Math.min(element.clientWidth, element.clientHeight))
       const yaw = -dx * radiansPerPixel
@@ -598,7 +601,7 @@ function CameraRig({
     if (inertia) {
       const frameDelta = Math.min(delta, 1 / 30)
       const target = controlsInstance.getTarget(new Vector3())
-      const offset = camera.position.clone().sub(target)
+      const offset = controlsInstance.getPosition(new Vector3()).sub(target)
       const up = camera.up.clone().normalize()
       offset.applyAxisAngle(up, inertia.yaw * frameDelta)
       const viewDirection = offset.clone().multiplyScalar(-1).normalize()

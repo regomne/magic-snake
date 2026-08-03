@@ -58,7 +58,7 @@ function App() {
   const [autoViewport, setAutoViewport] = useState(true)
   const [viewportFitSignal, setViewportFitSignal] = useState(0)
   const [preparingPlayback, setPreparingPlayback] = useState(false)
-  const [fittingPreset, setFittingPreset] = useState(false)
+  const [fittingPreset, setFittingPreset] = useState(true)
   const [showHelp, setShowHelp] = useState(false)
   const [resetSignal, setResetSignal] = useState(0)
   const [viewInteracting, setViewInteracting] = useState(false)
@@ -95,6 +95,13 @@ function App() {
     setCurrentStep((step) => Math.min(step, steps.length))
     if (parsed.errors.length) setPlaying(false)
   }, [steps.length, parsed.errors.length])
+
+  useEffect(() => {
+    // The restored shape starts at its completed step, so give its bounds the
+    // same initial auto-fit pass used before playback instead of retaining the
+    // distance intended for a fully straight snake.
+    setViewportFitSignal((value) => value + 1)
+  }, [])
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 2, pieceCount, formula }))
@@ -216,6 +223,16 @@ function App() {
       }
     }
     commitFormula(formatFormula(nextSteps, formulaNotation, pieceCount))
+  }
+
+  function straighten() {
+    if (!formula) return
+    commitFormula('')
+    setSelectedPiece(undefined)
+    // A folded shape is commonly viewed from much closer and may orbit around
+    // the selected edge piece. Return both the pivot and distance to a sensible
+    // whole-snake view before the user rotates the newly straightened model.
+    setResetSignal((value) => value + 1)
   }
 
   function togglePlaying() {
@@ -363,7 +380,7 @@ function App() {
             </div>
             <div className="edit-options">
               <label><input type="checkbox" checked={preventCollision} onChange={(event) => setPreventCollision(event.target.checked)} /> {en ? 'Prevent overlap' : '阻止最终位置重叠'}</label>
-              <button onClick={() => commitFormula('')}>{en ? 'Straighten' : '一键拉直'}</button>
+              <button onClick={straighten}>{en ? 'Straighten' : '一键拉直'}</button>
             </div>
           </section>
         </aside>
@@ -379,7 +396,7 @@ function App() {
             autoPlaying={autoViewport && playing}
             viewportFitSignal={viewportFitSignal}
             viewportFitActive={fittingPreset || preparingPlayback || (autoViewport && playing)}
-            viewportFitPadding={fittingPreset ? 0.94 : 1.08}
+            viewportFitPadding={1.08}
             viewportLocked={autoViewport && (playing || preparingPlayback || (viewInteracting && resumePlaybackAfterView.current))}
             freeOrbit={freeOrbit}
             onViewportFitComplete={() => {
