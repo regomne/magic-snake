@@ -22,7 +22,7 @@ import { DEFAULT_FORMULA, SHAPE_PRESETS } from './domain/presets'
 const LENGTHS = [24, 36, 48, 72] as const
 const STORAGE_KEY = 'magic-snake:workspace:v2'
 const CLASSIC_COLORS = ['#286fbd', '#fffdf8']
-const RAINBOW_COLORS = ['#f2c94c', '#f2994a', '#eb5757', '#9b51e0', '#2f80ed', '#27ae60']
+const RAINBOW_COLORS = ['#f2c94c', '#f57c00', '#e53935', '#9b51e0', '#2f80ed', '#27ae60']
 type ColorMode = 'classic' | 'rainbow' | 'custom'
 
 function parseColorSetting(value: string | null): { colorMode: ColorMode; customColors: string[] } {
