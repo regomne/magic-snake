@@ -34,7 +34,6 @@ interface SnakeSceneProps {
   viewportFitSignal?: number
   viewportFitActive?: boolean
   viewportFitPadding?: number
-  axisRotation?: 'x+' | 'x-' | 'y+' | 'y-' | 'z+' | 'z-'
   viewportLocked?: boolean
   freeOrbit?: boolean
   onViewportFitComplete?: () => void
@@ -350,7 +349,6 @@ function CameraRig({
   viewportFitSignal,
   viewportFitActive,
   viewportFitPadding,
-  axisRotation,
   viewportLocked,
   freeOrbit,
   onViewportFitComplete,
@@ -367,7 +365,6 @@ function CameraRig({
   viewportFitSignal: number
   viewportFitActive: boolean
   viewportFitPadding: number
-  axisRotation?: 'x+' | 'x-' | 'y+' | 'y-' | 'z+' | 'z-'
   viewportLocked: boolean
   freeOrbit: boolean
   onViewportFitComplete?: () => void
@@ -393,7 +390,12 @@ function CameraRig({
     startX: number
     startY: number
     dragging: boolean
+    velocityX: number
+    velocityY: number
+    lastMoveTime: number
+    continuedInertia: boolean
   } | undefined>(undefined)
+  const orbitInertia = useRef<{ yaw: number; pitch: number } | undefined>(undefined)
   const orbitContext = useRef({
     currentStep,
     viewportFitActive,
@@ -461,13 +463,15 @@ function CameraRig({
         if (!pointer) return
         orbitPointer.current = undefined
         if (element.hasPointerCapture(pointer.id)) element.releasePointerCapture(pointer.id)
-        if (pointer.dragging) {
+        if (pointer.dragging || pointer.continuedInertia) {
           userControlling.current = false
           orbitContext.current.onViewControlEnd?.()
         }
         return
       }
       if (event.button !== 0 || orbitPointer.current) return
+      const continuedInertia = orbitInertia.current !== undefined
+      orbitInertia.current = undefined
       orbitPointer.current = {
         id: event.pointerId,
         x: event.clientX,
@@ -475,6 +479,10 @@ function CameraRig({
         startX: event.clientX,
         startY: event.clientY,
         dragging: false,
+        velocityX: 0,
+        velocityY: 0,
+        lastMoveTime: performance.now(),
+        continuedInertia,
       }
       element.setPointerCapture(event.pointerId)
     }
@@ -489,28 +497,39 @@ function CameraRig({
       if (!pointer.dragging) {
         if (Math.hypot(event.clientX - pointer.startX, event.clientY - pointer.startY) <= 2) return
         pointer.dragging = true
-        userControlling.current = true
-        controlsInstance.stop()
-        const context = orbitContext.current
-        const interruptedViewportFit = context.viewportFitActive
-        startFitSignal.current = context.viewportFitSignal
-        startFitCenter.current = undefined
-        startFitDirection.current = undefined
-        autoFitDistance.current = undefined
-        if (interruptedViewportFit) context.onViewportFitComplete?.()
-        lastFitStep.current = context.currentStep
-        observedStep.current = context.currentStep
-        context.onViewControlStart?.()
+        if (!userControlling.current) {
+          userControlling.current = true
+          controlsInstance.stop()
+          const context = orbitContext.current
+          const interruptedViewportFit = context.viewportFitActive
+          startFitSignal.current = context.viewportFitSignal
+          startFitCenter.current = undefined
+          startFitDirection.current = undefined
+          autoFitDistance.current = undefined
+          if (interruptedViewportFit) context.onViewportFitComplete?.()
+          lastFitStep.current = context.currentStep
+          observedStep.current = context.currentStep
+          context.onViewControlStart?.()
+        }
       }
       if (!dx && !dy) return
       const target = controlsInstance.getTarget(new Vector3())
       const offset = camera.position.clone().sub(target)
       const up = camera.up.clone().normalize()
       const radiansPerPixel = Math.PI * 2 / Math.max(320, Math.min(element.clientWidth, element.clientHeight))
-      offset.applyAxisAngle(up, -dx * radiansPerPixel)
+      const yaw = -dx * radiansPerPixel
+      const pitch = -dy * radiansPerPixel
+      const now = performance.now()
+      const elapsed = Math.max(1 / 240, (now - pointer.lastMoveTime) / 1000)
+      pointer.lastMoveTime = now
+      const maxVelocity = 10
+      const measuredYawVelocity = Math.max(-maxVelocity, Math.min(maxVelocity, yaw / elapsed))
+      const measuredPitchVelocity = Math.max(-maxVelocity, Math.min(maxVelocity, pitch / elapsed))
+      pointer.velocityX = pointer.velocityX * 0.55 + measuredYawVelocity * 0.45
+      pointer.velocityY = pointer.velocityY * 0.55 + measuredPitchVelocity * 0.45
+      offset.applyAxisAngle(up, yaw)
       const viewDirection = offset.clone().multiplyScalar(-1).normalize()
       const right = viewDirection.cross(up).normalize()
-      const pitch = -dy * radiansPerPixel
       offset.applyAxisAngle(right, pitch)
       up.applyAxisAngle(right, pitch).normalize()
       const position = target.clone().add(offset)
@@ -533,9 +552,24 @@ function CameraRig({
       if (!pointer || pointer.id !== event.pointerId) return
       orbitPointer.current = undefined
       if (element.hasPointerCapture(event.pointerId)) element.releasePointerCapture(event.pointerId)
-      if (!pointer.dragging) return
-      userControlling.current = false
-      orbitContext.current.onViewControlEnd?.()
+      if (!pointer.dragging) {
+        if (pointer.continuedInertia) {
+          userControlling.current = false
+          orbitContext.current.onViewControlEnd?.()
+        }
+        return
+      }
+      const releaseDelay = Math.max(0, (performance.now() - pointer.lastMoveTime) / 1000)
+      const releaseDamping = Math.exp(-12 * releaseDelay)
+      const yawVelocity = pointer.velocityX * releaseDamping
+      const pitchVelocity = pointer.velocityY * releaseDamping
+      if (Math.hypot(yawVelocity, pitchVelocity) > 0.12) {
+        orbitInertia.current = { yaw: yawVelocity, pitch: pitchVelocity }
+        invalidate()
+      } else {
+        userControlling.current = false
+        orbitContext.current.onViewControlEnd?.()
+      }
     }
     element.addEventListener('pointerdown', beginOrbit)
     element.addEventListener('pointermove', moveOrbit)
@@ -559,22 +593,44 @@ function CameraRig({
   }, [camera, resetSignal, pieceCount, focusTarget])
   useFrame((_, delta) => {
     const controlsInstance = controls.current
-    if (!controlsInstance || userControlling.current) return
-    if (axisRotation) {
-      const target = focusTarget.current
-      const axis = axisRotation[0] === 'x'
-        ? new Vector3(1, 0, 0)
-        : axisRotation[0] === 'y' ? new Vector3(0, 1, 0) : new Vector3(0, 0, 1)
-      const angle = Math.min(delta, 1 / 30) * 0.9 * (axisRotation[1] === '+' ? 1 : -1)
-      const position = camera.position.clone().sub(target).applyAxisAngle(axis, angle).add(target)
-      camera.up.applyAxisAngle(axis, angle).normalize()
+    if (!controlsInstance) return
+    const inertia = orbitInertia.current
+    if (inertia) {
+      const frameDelta = Math.min(delta, 1 / 30)
+      const target = controlsInstance.getTarget(new Vector3())
+      const offset = camera.position.clone().sub(target)
+      const up = camera.up.clone().normalize()
+      offset.applyAxisAngle(up, inertia.yaw * frameDelta)
+      const viewDirection = offset.clone().multiplyScalar(-1).normalize()
+      const right = viewDirection.cross(up).normalize()
+      offset.applyAxisAngle(right, inertia.pitch * frameDelta)
+      up.applyAxisAngle(right, inertia.pitch * frameDelta).normalize()
+      const position = target.clone().add(offset)
+      camera.up.copy(up)
       controlsInstance.updateCameraUp()
-      controlsInstance.setFocalOffset(0, 0, 0, false)
-      controlsInstance.setLookAt(position.x, position.y, position.z, target.x, target.y, target.z, false)
+      controlsInstance.setLookAt(
+        position.x,
+        position.y,
+        position.z,
+        target.x,
+        target.y,
+        target.z,
+        false,
+      )
       appliedFocus.current.copy(target)
-      invalidate()
+      const damping = Math.exp(-4.2 * frameDelta)
+      inertia.yaw *= damping
+      inertia.pitch *= damping
+      if (Math.hypot(inertia.yaw, inertia.pitch) < 0.025) {
+        orbitInertia.current = undefined
+        userControlling.current = false
+        orbitContext.current.onViewControlEnd?.()
+      } else {
+        invalidate()
+      }
       return
     }
+    if (userControlling.current) return
     if (!viewportFitActive && !viewportLocked && startFitCenter.current) {
       startFitCenter.current = undefined
       startFitDirection.current = undefined
@@ -756,6 +812,7 @@ function CameraRig({
       maxDistance={200}
       smoothTime={0.18}
       onControlStart={() => {
+        orbitInertia.current = undefined
         userControlling.current = true
         controls.current?.stop()
         // A model/preset change can leave an in-progress fit queued while the
@@ -852,7 +909,6 @@ export function SnakeScene(props: SnakeSceneProps) {
         viewportFitSignal={props.viewportFitSignal ?? 0}
         viewportFitActive={props.viewportFitActive ?? false}
         viewportFitPadding={props.viewportFitPadding ?? 1.08}
-        axisRotation={props.axisRotation}
         viewportLocked={props.viewportLocked ?? false}
         freeOrbit={props.freeOrbit ?? true}
         onViewportFitComplete={props.onViewportFitComplete}
