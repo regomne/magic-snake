@@ -386,7 +386,7 @@ function App() {
               <label htmlFor="color-mode">{en ? 'Color pattern' : '魔尺配色'}</label>
               <select id="color-mode" value={colorMode} onChange={(event) => setColorMode(event.target.value as ColorMode)}>
                 <option value="classic">{en ? 'Classic blue & white' : '经典白蓝'}</option>
-                <option value="rainbow">{en ? 'Six-color cycle' : '六色循环'}</option>
+                <option value="rainbow">{en ? 'Rainbow' : '彩虹'}</option>
                 <option value="custom">{en ? 'Custom cycle' : '自定义循环'}</option>
               </select>
             </div>
