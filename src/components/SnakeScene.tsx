@@ -378,6 +378,7 @@ function CameraRig({
   const lastFitStep = useRef(0)
   const observedStep = useRef(0)
   const fitSphere = useRef(new Sphere())
+  const playbackCenter = useRef(new Vector3())
   const autoFitDistance = useRef<number | undefined>(undefined)
   const startFitSignal = useRef(viewportFitSignal)
   const startFitCenter = useRef<Vector3 | undefined>(undefined)
@@ -527,7 +528,42 @@ function CameraRig({
       }
       return
     }
-    if (appliedFocus.current.distanceToSquared(focusTarget.current) >= 0.000001) {
+    if ((autoPlaying || viewportLocked) && !foldedBounds.current.isEmpty()) {
+      const sphere = foldedBounds.current.getBoundingSphere(fitSphere.current)
+      const target = playbackCenter.current.copy(sphere.center)
+      const currentTarget = controlsInstance.getTarget(new Vector3())
+      const centerDifference = target.clone().sub(currentTarget)
+      // Small changes in the folded bounds should not make the camera look as
+      // though it is constantly correcting itself. Once the shape leaves this
+      // proportional dead zone, ease the orbit point back only until it is
+      // comfortably inside it.
+      const centerDeadZone = Math.max(0.18, sphere.radius * 0.1)
+      if (centerDifference.lengthSq() > centerDeadZone * centerDeadZone) {
+        // Selection follows the active piece during playback, but using that
+        // piece as the orbit point makes an off-centre joint swing the whole
+        // shape toward an edge of the screen. Auto framing eases its own target
+        // toward the folded shape's centre while retaining the chosen direction
+        // and distance.
+        const alpha = 1 - Math.exp(-3.2 * Math.min(delta, 1 / 30))
+        const direction = camera.position.clone().sub(currentTarget).normalize()
+        const nextTarget = currentTarget.addScaledVector(centerDifference, alpha)
+        const position = nextTarget.clone().addScaledVector(direction, controlsInstance.distance)
+        controlsInstance.setFocalOffset(0, 0, 0, false)
+        controlsInstance.setLookAt(
+          position.x,
+          position.y,
+          position.z,
+          nextTarget.x,
+          nextTarget.y,
+          nextTarget.z,
+          false,
+        )
+        appliedFocus.current.copy(nextTarget)
+        invalidate()
+      } else {
+        appliedFocus.current.copy(currentTarget)
+      }
+    } else if (appliedFocus.current.distanceToSquared(focusTarget.current) >= 0.000001) {
       const target = focusTarget.current
       // CameraControls keeps the current camera transform and uses a focal offset,
       // so an off-centre block can become the real orbit pivot without jumping to

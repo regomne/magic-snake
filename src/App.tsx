@@ -108,7 +108,11 @@ function App() {
 
   useEffect(() => {
     if (!playing) return
-    if (currentStep >= steps.length) { setPlaying(false); return }
+    if (currentStep >= steps.length) {
+      setPlaying(false)
+      setSelectedPiece(undefined)
+      return
+    }
     const delay = resumeDelayAfterView.current ?? animationDuration * 1000 + pauseMs
     resumeDelayAfterView.current = undefined
     scheduledPlaybackDueAt.current = performance.now() + delay
