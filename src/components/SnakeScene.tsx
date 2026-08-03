@@ -592,6 +592,18 @@ function CameraRig({
       onControlStart={() => {
         userControlling.current = true
         controls.current?.stop()
+        // A model/preset change can leave an in-progress fit queued while the
+        // user starts orbiting. If it survives the drag, the next frame after
+        // pointer-up reapplies the fit's captured direction and snaps the view
+        // back. Manual control takes ownership of the camera immediately.
+        const interruptedViewportFit = viewportFitActive
+        // Also consume a fit signal that React has delivered before the first
+        // frame had a chance to initialize it.
+        startFitSignal.current = viewportFitSignal
+        startFitCenter.current = undefined
+        startFitDirection.current = undefined
+        autoFitDistance.current = undefined
+        if (interruptedViewportFit) onViewportFitComplete?.()
         lastFitStep.current = currentStep
         observedStep.current = currentStep
         onViewControlStart?.()
