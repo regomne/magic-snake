@@ -36,6 +36,7 @@ interface SnakeSceneProps {
   viewportFitPadding?: number
   axisRotation?: 'x+' | 'x-' | 'y+' | 'y-' | 'z+' | 'z-'
   viewportLocked?: boolean
+  freeOrbit?: boolean
   onViewportFitComplete?: () => void
   onBlockedZoom?: () => void
   selectedPiece?: number
@@ -351,6 +352,7 @@ function CameraRig({
   viewportFitPadding,
   axisRotation,
   viewportLocked,
+  freeOrbit,
   onViewportFitComplete,
   onBlockedZoom,
   onViewControlStart,
@@ -367,6 +369,7 @@ function CameraRig({
   viewportFitPadding: number
   axisRotation?: 'x+' | 'x-' | 'y+' | 'y-' | 'z+' | 'z-'
   viewportLocked: boolean
+  freeOrbit: boolean
   onViewportFitComplete?: () => void
   onBlockedZoom?: () => void
   onViewControlStart?: () => void
@@ -383,15 +386,45 @@ function CameraRig({
   const startFitSignal = useRef(viewportFitSignal)
   const startFitCenter = useRef<Vector3 | undefined>(undefined)
   const startFitDirection = useRef<Vector3 | undefined>(undefined)
+  const orbitPointer = useRef<{
+    id: number
+    x: number
+    y: number
+    startX: number
+    startY: number
+    dragging: boolean
+  } | undefined>(undefined)
+  const orbitContext = useRef({
+    currentStep,
+    viewportFitActive,
+    viewportFitSignal,
+    onViewportFitComplete,
+    onViewControlStart,
+    onViewControlEnd,
+  })
+  orbitContext.current = {
+    currentStep,
+    viewportFitActive,
+    viewportFitSignal,
+    onViewportFitComplete,
+    onViewControlStart,
+    onViewControlEnd,
+  }
   const { camera, gl, invalidate } = useThree()
   const lastZoomNotice = useRef(0)
   useEffect(() => {
     if (controls.current) {
+      controls.current.mouseButtons.left = freeOrbit
+        ? CameraControlsImpl.ACTION.NONE
+        : CameraControlsImpl.ACTION.ROTATE
+      controls.current.touches.one = freeOrbit
+        ? CameraControlsImpl.ACTION.NONE
+        : CameraControlsImpl.ACTION.TOUCH_ROTATE
       controls.current.mouseButtons.right = viewportLocked
         ? CameraControlsImpl.ACTION.NONE
         : CameraControlsImpl.ACTION.OFFSET
     }
-  }, [viewportLocked])
+  }, [freeOrbit, viewportLocked])
   useEffect(() => {
     const showBlockedNotice = () => {
       const now = performance.now()
@@ -420,6 +453,102 @@ function CameraRig({
     }
   }, [gl, viewportLocked, onBlockedZoom])
   useEffect(() => {
+    if (!freeOrbit) return
+    const element = gl.domElement
+    const beginOrbit = (event: PointerEvent) => {
+      if (event.pointerType === 'touch' && !event.isPrimary) {
+        const pointer = orbitPointer.current
+        if (!pointer) return
+        orbitPointer.current = undefined
+        if (element.hasPointerCapture(pointer.id)) element.releasePointerCapture(pointer.id)
+        if (pointer.dragging) {
+          userControlling.current = false
+          orbitContext.current.onViewControlEnd?.()
+        }
+        return
+      }
+      if (event.button !== 0 || orbitPointer.current) return
+      orbitPointer.current = {
+        id: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+        startX: event.clientX,
+        startY: event.clientY,
+        dragging: false,
+      }
+      element.setPointerCapture(event.pointerId)
+    }
+    const moveOrbit = (event: PointerEvent) => {
+      const pointer = orbitPointer.current
+      const controlsInstance = controls.current
+      if (!pointer || pointer.id !== event.pointerId || !controlsInstance) return
+      const dx = event.clientX - pointer.x
+      const dy = event.clientY - pointer.y
+      pointer.x = event.clientX
+      pointer.y = event.clientY
+      if (!pointer.dragging) {
+        if (Math.hypot(event.clientX - pointer.startX, event.clientY - pointer.startY) <= 2) return
+        pointer.dragging = true
+        userControlling.current = true
+        controlsInstance.stop()
+        const context = orbitContext.current
+        const interruptedViewportFit = context.viewportFitActive
+        startFitSignal.current = context.viewportFitSignal
+        startFitCenter.current = undefined
+        startFitDirection.current = undefined
+        autoFitDistance.current = undefined
+        if (interruptedViewportFit) context.onViewportFitComplete?.()
+        lastFitStep.current = context.currentStep
+        observedStep.current = context.currentStep
+        context.onViewControlStart?.()
+      }
+      if (!dx && !dy) return
+      const target = controlsInstance.getTarget(new Vector3())
+      const offset = camera.position.clone().sub(target)
+      const up = camera.up.clone().normalize()
+      const radiansPerPixel = Math.PI * 2 / Math.max(320, Math.min(element.clientWidth, element.clientHeight))
+      offset.applyAxisAngle(up, -dx * radiansPerPixel)
+      const viewDirection = offset.clone().multiplyScalar(-1).normalize()
+      const right = viewDirection.cross(up).normalize()
+      const pitch = -dy * radiansPerPixel
+      offset.applyAxisAngle(right, pitch)
+      up.applyAxisAngle(right, pitch).normalize()
+      const position = target.clone().add(offset)
+      camera.up.copy(up)
+      controlsInstance.updateCameraUp()
+      controlsInstance.setLookAt(
+        position.x,
+        position.y,
+        position.z,
+        target.x,
+        target.y,
+        target.z,
+        false,
+      )
+      appliedFocus.current.copy(target)
+      invalidate()
+    }
+    const endOrbit = (event: PointerEvent) => {
+      const pointer = orbitPointer.current
+      if (!pointer || pointer.id !== event.pointerId) return
+      orbitPointer.current = undefined
+      if (element.hasPointerCapture(event.pointerId)) element.releasePointerCapture(event.pointerId)
+      if (!pointer.dragging) return
+      userControlling.current = false
+      orbitContext.current.onViewControlEnd?.()
+    }
+    element.addEventListener('pointerdown', beginOrbit)
+    element.addEventListener('pointermove', moveOrbit)
+    element.addEventListener('pointerup', endOrbit)
+    element.addEventListener('pointercancel', endOrbit)
+    return () => {
+      element.removeEventListener('pointerdown', beginOrbit)
+      element.removeEventListener('pointermove', moveOrbit)
+      element.removeEventListener('pointerup', endOrbit)
+      element.removeEventListener('pointercancel', endOrbit)
+    }
+  }, [camera, freeOrbit, gl, invalidate])
+  useEffect(() => {
     const straightSpan = pieceCount * Math.SQRT2 / 2
     const distance = Math.max(14, straightSpan * 1.6)
     const target = focusTarget.current
@@ -439,6 +568,7 @@ function CameraRig({
       const angle = Math.min(delta, 1 / 30) * 0.9 * (axisRotation[1] === '+' ? 1 : -1)
       const position = camera.position.clone().sub(target).applyAxisAngle(axis, angle).add(target)
       camera.up.applyAxisAngle(axis, angle).normalize()
+      controlsInstance.updateCameraUp()
       controlsInstance.setFocalOffset(0, 0, 0, false)
       controlsInstance.setLookAt(position.x, position.y, position.z, target.x, target.y, target.z, false)
       appliedFocus.current.copy(target)
@@ -724,6 +854,7 @@ export function SnakeScene(props: SnakeSceneProps) {
         viewportFitPadding={props.viewportFitPadding ?? 1.08}
         axisRotation={props.axisRotation}
         viewportLocked={props.viewportLocked ?? false}
+        freeOrbit={props.freeOrbit ?? true}
         onViewportFitComplete={props.onViewportFitComplete}
         onBlockedZoom={props.onBlockedZoom}
         onViewControlStart={props.onViewControlStart}

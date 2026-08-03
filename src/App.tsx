@@ -63,6 +63,9 @@ function App() {
   const [showHelp, setShowHelp] = useState(false)
   const [resetSignal, setResetSignal] = useState(0)
   const [viewInteracting, setViewInteracting] = useState(false)
+  // Keep the native CameraControls orbit available for future comparisons
+  // without exposing a permanent debug control in the product UI.
+  const freeOrbit = new URLSearchParams(window.location.search).get('orbit') !== 'native'
   const [selectedPiece, setSelectedPiece] = useState<number | undefined>()
   const [undoStack, setUndoStack] = useState<string[]>([])
   const [redoStack, setRedoStack] = useState<string[]>([])
@@ -149,8 +152,13 @@ function App() {
   }
 
   function startViewControl() {
-    resumePlaybackAfterView.current = playing
-    pausedPlaybackDueAt.current = scheduledPlaybackDueAt.current || performance.now() + animationDuration * 1000 + pauseMs
+    // A custom pointer gesture and CameraControls can report the same control
+    // start during one drag. Do not let a duplicate event, delivered after the
+    // first one paused playback, erase the fact that playback must resume.
+    resumePlaybackAfterView.current = resumePlaybackAfterView.current || playing
+    if (playing) {
+      pausedPlaybackDueAt.current = scheduledPlaybackDueAt.current || performance.now() + animationDuration * 1000 + pauseMs
+    }
     setViewInteracting(true)
     if (playing) setPlaying(false)
   }
@@ -381,6 +389,7 @@ function App() {
             viewportFitPadding={fittingPreset ? 0.94 : 1.08}
             axisRotation={axisRotation}
             viewportLocked={autoViewport && (playing || preparingPlayback || (viewInteracting && resumePlaybackAfterView.current))}
+            freeOrbit={freeOrbit}
             onViewportFitComplete={() => {
               if (fittingPreset) setFittingPreset(false)
               if (!preparingPlayback) return
