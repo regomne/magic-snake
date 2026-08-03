@@ -40,6 +40,7 @@ interface SnakeSceneProps {
   onBlockedZoom?: () => void
   selectedPiece?: number
   collisionPieces?: number[]
+  pieceColors?: string[]
   onSelectPiece?: (piece?: number) => void
   onViewControlStart?: () => void
   onViewControlEnd?: () => void
@@ -110,6 +111,7 @@ function SnakeModel({
   animationPaused = false,
   selectedPiece,
   collisionPieces = [],
+  pieceColors = ['#286fbd', '#fffdf8'],
   onSelectPiece,
   focusTarget,
   foldedBounds,
@@ -260,7 +262,7 @@ function SnakeModel({
   return (
     <group rotation={[-0.18, 0.18, 0]}>
       {initialTransforms.map((_, index) => {
-        const color = index % 2 === 0 ? '#286fbd' : '#fffdf8'
+        const color = pieceColors[index % pieceColors.length]
         const joint = jointFrames[index]
         const pieceNumber = index + 1
         const colliding = collisionPieces.includes(pieceNumber)

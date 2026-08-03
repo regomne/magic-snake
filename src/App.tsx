@@ -21,24 +21,46 @@ import { DEFAULT_FORMULA, SHAPE_PRESETS } from './domain/presets'
 
 const LENGTHS = [24, 36, 48, 72] as const
 const STORAGE_KEY = 'magic-snake:workspace:v2'
+const CLASSIC_COLORS = ['#286fbd', '#fffdf8']
+const RAINBOW_COLORS = ['#f2c94c', '#f2994a', '#eb5757', '#9b51e0', '#2f80ed', '#27ae60']
+type ColorMode = 'classic' | 'rainbow' | 'custom'
+
+function parseColorSetting(value: string | null): { colorMode: ColorMode; customColors: string[] } {
+  if (value === 'rainbow') return { colorMode: 'rainbow', customColors: [...RAINBOW_COLORS] }
+  if (value?.startsWith('custom:')) {
+    const colors = value.slice(7).split(',').filter((color) => /^#[0-9a-f]{6}$/i.test(color))
+    if (colors.length) return { colorMode: 'custom', customColors: colors }
+  }
+  return { colorMode: 'classic', customColors: [...CLASSIC_COLORS] }
+}
+
+function formatColorSetting(colorMode: ColorMode, customColors: string[]) {
+  return colorMode === 'custom' ? `custom:${customColors.join(',')}` : colorMode
+}
 
 function loadInitialState() {
   const hash = new URLSearchParams(window.location.hash.slice(1))
   const query = new URLSearchParams(window.location.search)
   const queryLength = Number(hash.get('length') ?? query.get('length'))
   const queryFormula = hash.get('formula') ?? query.get('formula')
+  const queryColors = hash.get('colors') ?? query.get('colors')
   if (LENGTHS.includes(queryLength as typeof LENGTHS[number]) && queryFormula !== null) {
-    return { pieceCount: queryLength, formula: queryFormula }
+    return { pieceCount: queryLength, formula: queryFormula, ...parseColorSetting(queryColors) }
   }
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '')
-    if (LENGTHS.includes(saved.pieceCount) && typeof saved.formula === 'string') return saved
+    if (LENGTHS.includes(saved.pieceCount) && typeof saved.formula === 'string') {
+      const savedColors = saved.colorMode === 'custom'
+        ? `custom:${Array.isArray(saved.customColors) ? saved.customColors.join(',') : ''}`
+        : saved.colorMode
+      return { pieceCount: saved.pieceCount, formula: saved.formula, ...parseColorSetting(savedColors) }
+    }
   } catch { /* Use the bundled example when saved data is damaged. */ }
-  return { pieceCount: 24, formula: DEFAULT_FORMULA }
+  return { pieceCount: 24, formula: DEFAULT_FORMULA, ...parseColorSetting(null) }
 }
 
-function writeShapeToHash(pieceCount: number, formula: string) {
-  const hash = new URLSearchParams({ length: String(pieceCount), formula })
+function writeShapeToHash(pieceCount: number, formula: string, colors: string) {
+  const hash = new URLSearchParams({ length: String(pieceCount), formula, colors })
   history.replaceState(null, '', `${window.location.pathname}#${hash}`)
 }
 
@@ -48,6 +70,8 @@ function App() {
   const en = language === 'en'
   const [pieceCount, setPieceCount] = useState<number>(initial.pieceCount)
   const [formula, setFormula] = useState(initial.formula)
+  const [colorMode, setColorMode] = useState<ColorMode>(initial.colorMode)
+  const [customColors, setCustomColors] = useState<string[]>(initial.customColors)
   const [formulaNotation, setFormulaNotation] = useState<FormulaNotation>(
     () => parseFormula(initial.formula, initial.pieceCount, language).notation ?? 'joint',
   )
@@ -90,6 +114,9 @@ function App() {
   const hasIntermediateCollisions = collisionIssues.some((issue) => issue.step < steps.length)
   const collisionPieces = [...new Set(currentIssues.flatMap((issue) => issue.pieces))]
   const selectedJoint = selectedPiece !== undefined && selectedPiece > 1 ? selectedPiece - 1 : undefined
+  const pieceColors = colorMode === 'classic'
+    ? CLASSIC_COLORS
+    : colorMode === 'rainbow' ? RAINBOW_COLORS : customColors
 
   useEffect(() => {
     setCurrentStep((step) => Math.min(step, steps.length))
@@ -104,8 +131,8 @@ function App() {
   }, [])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 2, pieceCount, formula }))
-  }, [pieceCount, formula])
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 3, pieceCount, formula, colorMode, customColors }))
+  }, [pieceCount, formula, colorMode, customColors])
 
   useEffect(() => { localStorage.setItem('magic-snake:language', language) }, [language])
 
@@ -264,6 +291,18 @@ function App() {
     if (!parsed.errors.length) setFormula(formatFormula(parsed.steps, notation, pieceCount))
   }
 
+  function changeCustomCycleLength(length: number) {
+    const nextLength = Math.max(1, Math.min(pieceCount, Math.round(length) || 1))
+    setCustomColors((colors) => Array.from(
+      { length: nextLength },
+      (_, index) => colors[index] ?? RAINBOW_COLORS[index % RAINBOW_COLORS.length],
+    ))
+  }
+
+  function changeCustomColor(index: number, color: string) {
+    setCustomColors((colors) => colors.map((current, colorIndex) => colorIndex === index ? color : current))
+  }
+
   function applyPreset(id: string) {
     const preset = SHAPE_PRESETS.find((item) => item.id === id)
     if (!preset) return
@@ -279,13 +318,17 @@ function App() {
     setPreparingPlayback(false)
     setFittingPreset(true)
     setViewportFitSignal((value) => value + 1)
-    writeShapeToHash(preset.pieceCount, preset.formula)
+    writeShapeToHash(preset.pieceCount, preset.formula, formatColorSetting(colorMode, customColors))
   }
 
   async function share() {
     const url = new URL(window.location.href)
     url.search = ''
-    url.hash = new URLSearchParams({ length: String(pieceCount), formula }).toString()
+    url.hash = new URLSearchParams({
+      length: String(pieceCount),
+      formula,
+      colors: formatColorSetting(colorMode, customColors),
+    }).toString()
     history.replaceState(null, '', url)
     try { await navigator.clipboard.writeText(url.toString()); setNotice(en ? 'Share link copied' : '分享链接已复制') }
     catch { setNotice(en ? 'Link written to the address bar' : '链接已写入地址栏') }
@@ -337,6 +380,34 @@ function App() {
               {LENGTHS.map((length) => <option key={length} value={length}>{length} {en ? 'pieces' : '段'}</option>)}
             </select>
           </div>
+
+          <section className="color-settings">
+            <div className="color-settings-heading">
+              <label htmlFor="color-mode">{en ? 'Color pattern' : '魔尺配色'}</label>
+              <select id="color-mode" value={colorMode} onChange={(event) => setColorMode(event.target.value as ColorMode)}>
+                <option value="classic">{en ? 'Classic blue & white' : '经典白蓝'}</option>
+                <option value="rainbow">{en ? 'Six-color cycle' : '六色循环'}</option>
+                <option value="custom">{en ? 'Custom cycle' : '自定义循环'}</option>
+              </select>
+            </div>
+            {colorMode === 'custom' && <>
+              <label className="cycle-length">
+                <span>{en ? 'Cycle length' : '循环块数'}</span>
+                <input type="number" min={1} max={pieceCount} value={customColors.length} onChange={(event) => changeCustomCycleLength(Number(event.target.value))} />
+              </label>
+              <div className="cycle-colors" aria-label={en ? 'Cycle colors' : '循环颜色'}>
+                {customColors.map((color, index) => (
+                  <label key={index} title={en ? `Cycle position ${index + 1}` : `循环第 ${index + 1} 块`}>
+                    <span>{index + 1}</span>
+                    <input type="color" value={color} onChange={(event) => changeCustomColor(index, event.target.value)} />
+                  </label>
+                ))}
+              </div>
+            </>}
+            {colorMode !== 'custom' && <div className="color-preview" aria-hidden="true">
+              {pieceColors.map((color, index) => <i key={`${color}-${index}`} style={{ background: color }} />)}
+            </div>}
+          </section>
 
           <div className="formula-heading">
             <label className="formula-label" htmlFor="formula">{en ? 'Formula' : '公式'}</label>
@@ -409,6 +480,7 @@ function App() {
             resetSignal={resetSignal}
             selectedPiece={selectedPiece}
             collisionPieces={collisionPieces}
+            pieceColors={pieceColors}
             onSelectPiece={(piece) => { setSelectedPiece(piece); setPlaying(false) }}
             onViewControlStart={startViewControl}
             onViewControlEnd={endViewControl}
