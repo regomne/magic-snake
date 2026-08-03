@@ -114,10 +114,12 @@ function SnakeModel({
   pieceColors = ['#286fbd', '#fffdf8'],
   onSelectPiece,
   focusTarget,
+  modelBounds,
   foldedBounds,
   foldedPieceCount,
 }: Omit<SnakeSceneProps, 'resetSignal' | 'autoPlaying' | 'viewportFitSignal' | 'viewportFitActive' | 'viewportLocked' | 'onViewportFitComplete' | 'onBlockedZoom' | 'onViewControlStart' | 'onViewControlEnd'> & {
   focusTarget: MutableRefObject<Vector3>
+  modelBounds: MutableRefObject<Box3>
   foldedBounds: MutableRefObject<Box3>
   foldedPieceCount: number
 }) {
@@ -163,6 +165,7 @@ function SnakeModel({
         }
       }
     })
+    modelBounds.current.copy(bounds)
     if (selectedPiece === undefined && !bounds.isEmpty()) bounds.getCenter(focusTarget.current)
   }
 
@@ -345,6 +348,7 @@ function CameraRig({
   resetSignal,
   pieceCount,
   focusTarget,
+  modelBounds,
   foldedBounds,
   currentStep,
   autoPlaying,
@@ -361,6 +365,7 @@ function CameraRig({
   resetSignal: number
   pieceCount: number
   focusTarget: MutableRefObject<Vector3>
+  modelBounds: MutableRefObject<Box3>
   foldedBounds: MutableRefObject<Box3>
   currentStep: number
   autoPlaying: boolean
@@ -588,14 +593,23 @@ function CameraRig({
     }
   }, [camera, freeOrbit, gl, invalidate])
   useEffect(() => {
-    const straightSpan = pieceCount * Math.SQRT2 / 2
-    const distance = Math.max(14, straightSpan * 1.6)
-    const target = focusTarget.current
-    const position = new Vector3(target.x + distance * 0.16, target.y + distance * 0.42, target.z + distance)
+    if (modelBounds.current.isEmpty()) return
+    const sphere = modelBounds.current.getBoundingSphere(new Sphere())
+    const perspectiveCamera = camera as PerspectiveCamera
+    const verticalHalfFov = perspectiveCamera.fov * Math.PI / 360
+    const horizontalHalfFov = Math.atan(Math.tan(verticalHalfFov) * perspectiveCamera.aspect)
+    const limitingHalfFov = Math.min(verticalHalfFov, horizontalHalfFov)
+    const distance = Math.max(2, sphere.radius / Math.sin(limitingHalfFov) * 1.08)
+    const target = sphere.center
+    const direction = new Vector3(0.16, 0.42, 1).normalize()
+    const position = target.clone().addScaledVector(direction, distance)
     controls.current?.setLookAt(position.x, position.y, position.z, target.x, target.y, target.z, false)
     controls.current?.setFocalOffset(0, 0, 0, false)
-    appliedFocus.current.copy(target)
-  }, [camera, resetSignal, pieceCount, focusTarget])
+    // Keep the current selection, but do not let its off-centre focus override
+    // the whole-shape orbit point on the next frame.
+    appliedFocus.current.copy(focusTarget.current)
+    invalidate()
+  }, [camera, resetSignal, pieceCount, focusTarget, invalidate, modelBounds])
   useFrame((_, delta) => {
     const controlsInstance = controls.current
     if (!controlsInstance) return
@@ -844,6 +858,7 @@ function CameraRig({
 export function SnakeScene(props: SnakeSceneProps) {
   const shadowExtent = Math.max(14, props.pieceCount * 0.56)
   const focusTarget = useRef(new Vector3())
+  const modelBounds = useRef(new Box3())
   const foldedBounds = useRef(new Box3())
   const leftPointerStart = useRef<{ x: number; y: number } | undefined>(undefined)
   const foldedPieceCount = props.currentStep > 0
@@ -892,6 +907,7 @@ export function SnakeScene(props: SnakeSceneProps) {
       <SnakeModel
         {...props}
         focusTarget={focusTarget}
+        modelBounds={modelBounds}
         foldedBounds={foldedBounds}
         foldedPieceCount={foldedPieceCount}
       />
@@ -908,6 +924,7 @@ export function SnakeScene(props: SnakeSceneProps) {
         resetSignal={props.resetSignal}
         pieceCount={props.pieceCount}
         focusTarget={focusTarget}
+        modelBounds={modelBounds}
         foldedBounds={foldedBounds}
         currentStep={props.currentStep}
         autoPlaying={props.autoPlaying ?? false}
