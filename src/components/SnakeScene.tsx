@@ -1,4 +1,4 @@
-import { CameraControls, CameraControlsImpl, ContactShadows, Edges, Environment, Lightformer } from '@react-three/drei'
+import { CameraControls, CameraControlsImpl, Edges, Environment, Lightformer } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import type { MutableRefObject } from 'react'
@@ -910,15 +910,6 @@ export function SnakeScene(props: SnakeSceneProps) {
         modelBounds={modelBounds}
         foldedBounds={foldedBounds}
         foldedPieceCount={foldedPieceCount}
-      />
-      <ContactShadows
-        position={[0, -0.14, 0]}
-        opacity={0.3}
-        scale={shadowExtent * 2.8}
-        blur={2.1}
-        far={3.5}
-        resolution={256}
-        color="#52605a"
       />
       <CameraRig
         resetSignal={props.resetSignal}
