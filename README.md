@@ -11,8 +11,9 @@ A browser-based 3D editor and player for designing Rubik's Snake shapes. It supp
 - Select pieces in the 3D view and rotate their joints
 - Enter and convert between 0123 pose encoding, speed-solving notation, and parenthesized formulas
 - Browse built-in shapes and play their folding sequences step by step
+- Choose classic or rainbow colors, or create a custom cyclic color palette
 - Detect overlapping pieces in the final pose using exact geometry
-- Automatically frame shapes during playback and control the camera with the mouse or axis buttons
+- Automatically frame shapes during playback, reset the view to the current shape, and use unrestricted inertial orbit controls
 - Share the current shape through the URL hash
 - Switch between Chinese and English interfaces
 
