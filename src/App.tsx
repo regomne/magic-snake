@@ -64,12 +64,17 @@ function writeShapeToHash(pieceCount: number, formula: string, colors: string) {
   history.replaceState(null, '', `${window.location.pathname}#${hash}`)
 }
 
+function matchingPresetId(pieceCount: number, formula: string) {
+  return SHAPE_PRESETS.find((preset) => preset.pieceCount === pieceCount && preset.formula === formula)?.id ?? 'custom'
+}
+
 function App() {
   const [initial] = useState(loadInitialState)
   const [language, setLanguage] = useState<'zh' | 'en'>(() => localStorage.getItem('magic-snake:language') === 'en' ? 'en' : 'zh')
   const en = language === 'en'
   const [pieceCount, setPieceCount] = useState<number>(initial.pieceCount)
   const [formula, setFormula] = useState(initial.formula)
+  const [selectedPreset, setSelectedPreset] = useState(() => matchingPresetId(initial.pieceCount, initial.formula))
   const [colorMode, setColorMode] = useState<ColorMode>(initial.colorMode)
   const [customColors, setCustomColors] = useState<string[]>(initial.customColors)
   const [formulaNotation, setFormulaNotation] = useState<FormulaNotation>(
@@ -132,6 +137,10 @@ function App() {
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 3, pieceCount, formula, colorMode, customColors }))
+  }, [pieceCount, formula, colorMode, customColors])
+
+  useEffect(() => {
+    writeShapeToHash(pieceCount, formula, formatColorSetting(colorMode, customColors))
   }, [pieceCount, formula, colorMode, customColors])
 
   useEffect(() => { localStorage.setItem('magic-snake:language', language) }, [language])
@@ -209,6 +218,7 @@ function App() {
 
   function setFinishedFormula(next: string) {
     setFormula(next)
+    setSelectedPreset('custom')
     const nextParsed = parseFormula(next, pieceCount, language)
     if (nextParsed.notation) setFormulaNotation(nextParsed.notation)
     setCurrentStep(nextParsed.steps.length)
@@ -288,7 +298,13 @@ function App() {
 
   function changeFormulaNotation(notation: FormulaNotation) {
     setFormulaNotation(notation)
-    if (!parsed.errors.length) setFormula(formatFormula(parsed.steps, notation, pieceCount))
+    if (!parsed.errors.length) {
+      const next = formatFormula(parsed.steps, notation, pieceCount)
+      if (next !== formula) {
+        setFormula(next)
+        setSelectedPreset('custom')
+      }
+    }
   }
 
   function changeCustomCycleLength(length: number) {
@@ -311,6 +327,7 @@ function App() {
     setRedoStack([])
     setPieceCount(preset.pieceCount)
     setFormula(preset.formula)
+    setSelectedPreset(preset.id)
     if (nextParsed.notation) setFormulaNotation(nextParsed.notation)
     setCurrentStep(nextParsed.steps.length)
     setSelectedPiece(undefined)
@@ -318,7 +335,6 @@ function App() {
     setPreparingPlayback(false)
     setFittingPreset(true)
     setViewportFitSignal((value) => value + 1)
-    writeShapeToHash(preset.pieceCount, preset.formula, formatColorSetting(colorMode, customColors))
   }
 
   async function share() {
@@ -368,8 +384,8 @@ function App() {
         <aside className="editor-panel">
           <div className="preset-row">
             <label htmlFor="preset">{en ? 'Preset shape' : '预置形状'}</label>
-            <select id="preset" defaultValue="" onChange={(event) => { applyPreset(event.target.value); event.target.value = '' }}>
-              <option value="" disabled>{en ? 'Choose a shape…' : '选择预置造型…'}</option>
+            <select id="preset" value={selectedPreset} onChange={(event) => { const id = event.target.value; if (id === 'custom') setSelectedPreset('custom'); else applyPreset(id) }}>
+              <option value="custom">{en ? 'Custom' : '自定义'}</option>
               {SHAPE_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{en ? preset.nameEn : preset.name}</option>)}
             </select>
           </div>
@@ -404,7 +420,7 @@ function App() {
 
           <div className="length-row">
             <label htmlFor="piece-count">{en ? 'Snake length' : '魔尺段数'}</label>
-            <select id="piece-count" value={pieceCount} onChange={(event) => { const length = Number(event.target.value); setPieceCount(length); setCurrentStep(parseFormula(formula, length, language).steps.length); setPlaying(false); setSelectedPiece(undefined) }}>
+            <select id="piece-count" value={pieceCount} onChange={(event) => { const length = Number(event.target.value); setPieceCount(length); setSelectedPreset('custom'); setCurrentStep(parseFormula(formula, length, language).steps.length); setPlaying(false); setSelectedPiece(undefined) }}>
               {LENGTHS.map((length) => <option key={length} value={length}>{length} {en ? 'pieces' : '段'}</option>)}
             </select>
           </div>
@@ -424,7 +440,7 @@ function App() {
             spellCheck={false}
             onFocus={() => { textStart.current = formula }}
             onBlur={() => { if (textStart.current !== formula) { setUndoStack((stack) => [...stack, textStart.current]); setRedoStack([]) } }}
-            onChange={(event) => { const next = event.target.value; const result = parseFormula(next, pieceCount, language); setFormula(next); if (result.notation && !result.errors.length) setFormulaNotation(result.notation); setCurrentStep(result.steps.length); setPlaying(false) }}
+            onChange={(event) => { const next = event.target.value; const result = parseFormula(next, pieceCount, language); setFormula(next); setSelectedPreset('custom'); if (result.notation && !result.errors.length) setFormulaNotation(result.notation); setCurrentStep(result.steps.length); setPlaying(false) }}
             placeholder={formulaNotation === 'joint' ? (en ? 'e.g. 2(1), 4(-1), 6(2)' : '例如：2(1), 4(-1), 6(2)') : formulaNotation === 'speed' ? (en ? 'e.g. 2+ 4- 6x' : '例如：2+ 4- 6x') : (en ? `${pieceCount}-digit 0123 pose encoding` : `${pieceCount} 位 0123 姿态编码`)}
           />
           <div className="legend">
