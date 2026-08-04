@@ -70,7 +70,11 @@ function matchingPresetId(pieceCount: number, formula: string) {
 
 function App() {
   const [initial] = useState(loadInitialState)
-  const [language, setLanguage] = useState<'zh' | 'en'>(() => localStorage.getItem('magic-snake:language') === 'en' ? 'en' : 'zh')
+  const [language, setLanguage] = useState<'zh' | 'en'>(() => {
+    const savedLanguage = localStorage.getItem('magic-snake:language')
+    if (savedLanguage === 'zh' || savedLanguage === 'en') return savedLanguage
+    return navigator.language.toLowerCase().startsWith('zh') ? 'zh' : 'en'
+  })
   const en = language === 'en'
   const [pieceCount, setPieceCount] = useState<number>(initial.pieceCount)
   const [formula, setFormula] = useState(initial.formula)
